@@ -1,0 +1,1676 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Advanced Phase-Neutral Circuit Simulator with Sensors & OLR</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+    <style>
+        /* --- Global Resets & Theme Base --- */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            -webkit-touch-callout: none;
+            user-select: none;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background-color: #1e272e;
+            color: #ffffff;
+            overflow: hidden;
+        }
+
+        /* --- Header Controls Navigation --- */
+        #controls {
+            background-color: #2c3e50;
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            border-bottom: 3px solid #1abc9c;
+            align-items: center;
+            flex-wrap: wrap;
+            z-index: 100;
+        }
+
+        #controls button {
+            padding: 8px 14px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            transition: opacity 0.2s;
+        }
+        #controls button:hover { opacity: 0.9; }
+
+        .zoom-btn { background-color: #34495e; border: 1px solid #7f8c8d; }
+        .mode-btn { background-color: #f39c12; }
+        .clear-btn { background-color: #c0392b; }
+        .download-btn { background-color: #e67e22; }
+        .export-img-btn { background-color: #27ae60; }
+        .save-btn { background-color: #3498db; }
+        .load-btn { background-color: #9b59b6; }
+        .theme-btn { background-color: #34495e; border: 1px solid #1abc9c; color: #1abc9c; }
+
+        .info-input {
+            padding: 8px 12px;
+            background-color: #34495e;
+            border: 1px solid #1abc9c;
+            color: #ffffff;
+            border-radius: 4px;
+            font-size: 12px;
+            outline: none;
+            min-width: 170px;
+        }
+        .info-input:focus { border-color: #2ecc71; background-color: #3d566e; }
+        ::placeholder { color: #bdc3c7; }
+
+        #diagnostic-log {
+            flex-grow: 1;
+            font-size: 13px;
+            background-color: #151e27;
+            padding: 8px;
+            border-radius: 4px;
+            border-left: 4px solid #f39c12;
+            color: #f39c12;
+            font-weight: bold;
+            max-height: 40px;
+            overflow-y: auto;
+        }
+
+        /* --- Layout Container Configuration --- */
+        #main-container {
+            display: flex;
+            flex-grow: 1;
+            height: calc(100vh - 90px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* --- Sidebar Symbol Palette --- */
+        #palette {
+            width: 260px;
+            background-color: #2c3e50;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border-right: 3px solid #1abc9c;
+            overflow-y: auto;
+            z-index: 90;
+        }
+
+        .section-title {
+            text-align: left;
+            font-size: 13px;
+            color: #ffffff;
+            background-color: rgba(52, 73, 94, 0.4);
+            padding: 10px 12px;
+            margin-top: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 4px;
+            border-left: 4px solid #1abc9c;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.3s;
+        }
+        .section-title:hover { background-color: #3d566e; color: #1abc9c; }
+        .section-title .arrow { font-size: 10px; transition: transform 0.2s; }
+        
+        .section-content {
+            display: none;
+            flex-direction: column;
+            gap: 6px;
+            padding: 6px 4px 10px 4px;
+            background-color: #243342;
+            border-radius: 0 0 4px 4px;
+        }
+        .section-content.open { display: flex; }
+
+        .symbol {
+            background-color: #2c3e50;
+            padding: 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            text-align: center;
+            border: 1px solid #1abc9c;
+            font-size: 12px;
+            color: #ecf0f1;
+            transition: background 0.1s;
+        }
+        .symbol:hover { background-color: #34495e; border-color: #2ecc71; }
+
+        /* --- Canvas Setup --- */
+        #canvas-container {
+            flex-grow: 1;
+            position: relative;
+            background-color: #57606f;
+            overflow: hidden;
+        }
+
+        #canvas-info-box {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 8px 14px;
+            border-radius: 6px;
+            border-left: 5px solid #1abc9c;
+            color: #2c3e50;
+            display: none;
+            z-index: 80;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            pointer-events: none;
+        }
+
+        #canvas {
+            width: 4000px;
+            height: 4000px;
+            position: absolute;
+            top: 0;
+            left: 0;
+            background-color: #ffffff;
+            background-image: linear-gradient(#eef1f6 1px, transparent 1px), linear-gradient(90deg, #eef1f6 1px, transparent 1px);
+            background-size: 60px 60px;
+            transform-origin: top left;
+            touch-action: none; /* Only disable touches inside actual simulator graph canvas */
+        }
+        
+        /* Dark Theme Canvas Intersections */
+        #canvas.dark-theme {
+            background-color: #1e272e;
+            background-image: linear-gradient(#2c3e50 1px, transparent 1px), linear-gradient(90deg, #2c3e50 1px, transparent 1px);
+        }
+        #canvas.dark-theme ~ #canvas-info-box { background: rgba(44, 62, 80, 0.95); color: #ecf0f1; }
+        #canvas.dark-theme .symbol-label { color: #ecf0f1; }
+        #canvas.dark-theme .flow-line, #canvas.dark-theme .flow-line-h, #canvas.dark-theme .flow-line-v { stroke: #bdc3c7; }
+        #canvas.dark-theme text { fill: #ecf0f1; }
+        #canvas.dark-theme .svg-id-text, #canvas.dark-theme .tc-val { fill: #e74c3c !important; }
+        #canvas.dark-theme .load-box, #canvas.dark-theme .load-circle { fill: #34495e; }
+
+        /* --- Dropped Elements Objects --- */
+        .dropped-symbol {
+            position: absolute;
+            width: 90px;
+            height: 90px;
+            z-index: 10;
+            cursor: move;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+        }
+        .dropped-symbol.selected {
+            outline: 2px dashed #3498db;
+            background-color: rgba(52, 152, 219, 0.05);
+        }
+
+        .symbol-graphic-container {
+            width: 90px;
+            height: 90px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+        .symbol-graphic-container svg { display: block; width: 90px; height: 90px; }
+
+        .symbol-label {
+            position: absolute;
+            left: 85px;
+            top: 18px;
+            font-size: 13px;
+            font-weight: bold;
+            color: #2c3e50;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 15;
+        }
+        .status-on { color: #2ecc71; font-weight: bold; }
+        .status-off { color: #e74c3c; font-weight: bold; }
+
+        /* --- Circuit Live State Animations --- */
+        .live-wire {
+            stroke: #e74c3c !important; 
+            stroke-width: 4.5px !important;
+            stroke-dasharray: 8, 4;
+            animation: currentFlow 0.5s linear infinite;
+            filter: drop-shadow(0px 0px 5px #e74c3c);
+        }
+        .neutral-wire {
+            stroke: #3498db !important; 
+            stroke-width: 4.5px !important;
+            stroke-dasharray: 8, 4;
+            animation: currentFlowReverse 0.5s linear infinite;
+            filter: drop-shadow(0px 0px 5px #3498db);
+        }
+
+        @keyframes currentFlow { to { stroke-dashoffset: -20; } }
+        @keyframes currentFlowReverse { to { stroke-dashoffset: 20; } }
+
+        .load-active { fill: #2ecc71 !important; stroke: #27ae60 !important; }
+        .coil-active { fill: #e74c3c !important; stroke: #c0392b !important; }
+        .timer-active { fill: #9b59b6 !important; stroke: #8e44ad !important; }
+        .olr-active { fill: #e67e22 !important; stroke: #d35400 !important; }
+        .tc-active { fill: #3498db !important; stroke: #2980b9 !important; }
+        
+        .light-on { 
+            fill: #f1c40f !important; 
+            stroke: #f39c12 !important; 
+            filter: drop-shadow(0px 0px 12px #f1c40f); 
+        }
+
+                /* --- Management Buttons Inside Nodes --- */
+        .delete-btn, .rotate-btn, .copy-btn, .id-btn {
+            display: none; position: absolute; color: white; border-radius: 50%;
+            width: 24px; height: 24px; font-size: 14px; line-height: 22px; text-align: center;
+            cursor: pointer; font-weight: bold; z-index: 20; box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        .delete-btn { top: -15px; right: -15px; background: #e74c3c; }
+        .delete-btn::before { content: '×'; }
+        .rotate-btn { top: -15px; left: -15px; background: #3498db; }
+        .rotate-btn::before { content: '⟳'; }
+        
+        /* মোবাইলের জন্য নতুন সবুজ রঙের কপি বাটন */
+        .copy-btn { bottom: -15px; left: -15px; background: #27ae60; font-size: 12px; line-height: 24px; }
+        .copy-btn::before { content: '📋'; }
+
+        .id-btn { top: 35px; right: -25px; background: #9b59b6; line-height: 24px; font-size: 12px; }
+        
+        /* সিলেক্ট করলে ডিলিট, রোটেট এবং কপি বাটন একসাথে দেখাবে */
+        .dropped-symbol.selected .delete-btn, .dropped-symbol.selected .rotate-btn, .dropped-symbol.selected .copy-btn { display: block; }
+        .dropped-symbol.selected.has-id .id-btn { display: block; }
+
+        /* --- Overlay Panels System --- */
+        #saved-diagrams-panel {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background-color: #2c3e50; padding: 20px; border-radius: 8px; border: 2px solid #1abc9c;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8); z-index: 1000; display: none; width: 400px; max-height: 80vh; flex-direction: column;
+        }
+        #saved-diagrams-panel h3 { margin-bottom: 15px; color: #1abc9c; text-align: center; font-size: 16px; }
+        #saved-list-container { flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px; }
+
+        .saved-item { background-color: #34495e; padding: 10px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
+        .saved-item-info { font-size: 13px; color: #ecf0f1; }
+        .saved-item-info span { color: #f39c12; font-weight: bold; }
+        
+        .action-btns button { padding: 5px 10px; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; font-weight: bold; color: white; }
+        .btn-load { background-color: #2ecc71; margin-right: 5px; }
+        .btn-delete { background-color: #e74c3c; }
+        .close-panel-btn { background-color: #7f8c8d; padding: 8px; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+
+        #activation-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: #1a202c;
+            z-index: 999999; display: flex; align-items: center; justify-content: center; padding: 20px;
+        }
+        .activation-box { background-color: #2d3748; border: 2px solid #1abc9c; border-radius: 12px; padding: 30px; max-width: 450px; width: 100%; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
+        .activation-box h2 { color: #1abc9c; margin-bottom: 15px; font-size: 22px; }
+        .activation-box p { font-size: 14px; line-height: 1.6; color: #e2e8f0; margin-bottom: 20px; }
+        
+        .activation-input {
+            width: 100%; padding: 12px; border-radius: 6px; border: 1px solid #4a5568; background: #1a202c; color: white;
+            font-size: 16px; text-align: center; outline: none; font-weight: bold; letter-spacing: 2px; margin-bottom: 15px;
+        }
+        .activation-input:focus { border-color: #2ecc71; }
+        .activate-submit-btn { width: 100%; padding: 12px; border: none; background: #2ecc71; color: white; font-size: 15px; font-weight: bold; border-radius: 6px; cursor: pointer; }
+
+        /* --- Mobile Responsive Configuration & Bottom Sheets --- */
+        #fab-menu-btn { display: none; }
+        #bottom-sheet-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 85; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+
+        @media (max-width: 768px) {
+            #controls { padding: 5px; gap: 6px; }
+            #controls button, .info-input { flex-grow: 1; font-size: 11px; padding: 6px 10px; min-width: 120px; }
+            #diagnostic-log { max-height: 55px; width: 100%; font-size: 11px; }
+
+            #main-container { height: calc(100vh - 150px); }
+            
+            /* Transforming Left Palette into a gorgeous Mobile Bottom Sheet */
+            #palette {
+                position: fixed; bottom: 0; left: 0; width: 100%; max-height: 60vh;
+                background-color: #1e272e; border-right: none; border-top: 4px solid #1abc9c;
+                border-radius: 16px 16px 0 0; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.1, 0.7, 0.1, 1);
+                z-index: 99; box-shadow: 0 -5px 25px rgba(0,0,0,0.5);
+            }
+            #palette.open { transform: translateY(0); }
+            #bottom-sheet-overlay.show { opacity: 1; pointer-events: auto; }
+
+            #fab-menu-btn {
+                display: block; position: fixed; bottom: 80px; left: 20px; background: #1abc9c;
+                color: white; border: none; border-radius: 50px; padding: 12px 24px; font-weight: bold;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.4); z-index: 80; cursor: pointer; font-size: 13px;
+            }
+            #saved-diagrams-panel { width: 90%; }
+        }
+        /* --- জুম ফিক্স কোড (কালো দাগ দূর করার জন্য) --- */
+body {
+    overflow: auto !important; 
+}
+
+#canvas {
+    transform-origin: top left !important;
+    will-change: transform !important;
+    backface-visibility: hidden !important;
+}
+
+.dropped-symbol {
+    background-color: transparent !important;
+    box-sizing: border-box !important;
+    will-change: transform !important;
+    backface-visibility: hidden !important;
+}
+
+.symbol-graphic-container {
+    will-change: transform !important;
+    backface-visibility: hidden !important;
+}
+         /* --- কানেকশন বুলেট পয়েন্ট (Terminal Dots) স্টাইল --- */
+        .terminal-dot {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background-color: #f1c40f; /* হলুদ রঙের ডট */
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            z-index: 30;
+            cursor: pointer;
+            box-shadow: 0 0 4px rgba(0,0,0,0.5);
+            transition: transform 0.2s, background-color 0.2s;
+            display: none; /* ডিফল্টভাবে লুকানো থাকবে */
+        }
+        
+        /* সিম্বল সিলেক্ট করলে বুলেটগুলো দেখা যাবে */
+        .dropped-symbol.selected .terminal-dot {
+            display: block;
+        }
+
+        /* কানেকশনের জন্য প্রথম বুলেটটি সিলেক্ট করার পর যাতে লুকিয়ে না যায় */
+        .terminal-dot.selected-dot {
+            display: block !important; 
+            background-color: #e67e22 !important;
+            animation: pulseDot 0.6s infinite alternate;
+            transform: scale(1.4);
+            border-color: #000000;
+        }
+
+        /* মাউস বা টাচ করলে বড় হবে */
+        .terminal-dot:hover {
+            transform: scale(1.3);
+            background-color: #2ecc71;
+        }
+        
+        @keyframes pulseDot {
+            from { box-shadow: 0 0 4px #e67e22; }
+            to { box-shadow: 0 0 12px #e74c3c; }
+        }
+        /* লক মোডে বুলেট লুকিয়ে যাবে */
+        body.locked-mode .terminal-dot { display: none !important; }
+
+    </style>
+</head>
+<body>
+
+    <!-- Lock Overlay Screen -->
+    <div id="activation-overlay">
+        <div class="activation-box">
+            <h2>🔒 সার্কিট সিমুলেটর লকড!</h2>
+            <p>এই অ্যাডভান্সড অটোমেশন ও মোটর কন্ট্রোল সার্কিট সিমুলেটরটি ব্যবহার করার জন্য আপনাকে কোড দিয়ে ডিভাইসটি অ্যাক্টিভেট করতে হবে।</p>
+            <input type="text" id="activationCodeInput" class="activation-input" placeholder="অ্যাক্টিভেশন কোড লিখুন">
+            <button class="activate-submit-btn" onclick="validateActivationCode()">অ্যাক্টিভেট করুন</button>
+        </div>
+    </div>
+
+    <!-- Header Navigation Panels -->
+    <div id="controls">
+        <div style="color: #ffffff; font-weight: bold; font-size: 14px; padding: 6px 12px; background: linear-gradient(135deg, #1abc9c, #16a085); border-radius: 4px; border: 1px solid #1abc9c; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">👑 subas kumar mahato</div>
+        
+        <button class="theme-btn" onclick="toggleCanvasTheme()">🌙 ডার্ক থিম</button>
+        <button class="zoom-btn" onclick="zoomIn()">জুম ইন (+)</button>
+        <button class="zoom-btn" onclick="zoomOut()">জুম আউট (-)</button>
+        <button class="mode-btn" id="modeToggle" onclick="toggleMode()">মোড: সিম্বল মুভ</button>
+        
+        <button class="mode-btn" onclick="undo()" style="background-color: #34495e;">⟲ আনডু</button>
+        <button class="mode-btn" onclick="redo()" style="background-color: #34495e;">⟳ রিডু</button>
+        <button class="mode-btn" id="lockToggleBtn" onclick="toggleLock()">🔓 আনলক</button>
+        <button class="clear-btn" id="deleteModeBtn" onclick="toggleDeleteMode()">🗑️ ডিলিট: অফ</button>
+
+        <button class="clear-btn" onclick="clearCanvas()">সব মুছুন</button>
+                <button class="save-btn" onclick="pasteCopiedSymbol()" style="background-color: #2ecc71;">📋 পেস্ট করুন</button>
+
+        
+        <button class="save-btn" onclick="saveDiagramToFirebase()">ক্লাউডে সেভ করুন ☁️</button>
+        <button class="load-btn" onclick="toggleSavedList()">সেভ করা ফাইল 📂</button>
+
+        <input type="text" id="diagramTitle" class="info-input" placeholder="ডায়াগ্রামের নাম (শিরোনাম)" oninput="updateLiveLabels()">
+        <input type="text" id="studentName" class="info-input" placeholder="আপনার নাম ও রোল" oninput="updateLiveLabels()">
+
+        <button class="export-img-btn" onclick="exportImage('png')">PNG ডাউনলোড 🖼️</button>
+        <button class="download-btn" onclick="downloadPDF()">ডাউনলোড PDF 📄</button>
+        <div id="diagnostic-log">সিস্টেম রেডি: ফেজ (L) এবং নিউট্রাল (N) সংযোগ সম্পন্ন করুন।</div>
+    </div>
+
+    <!-- Core Main Containers -->
+    <div id="main-container">
+        <!-- Sidebar Palette / Bottom Sheet -->
+        <div id="palette">
+            <div class="section-title" onclick="togglePaletteSection(this)">পাওয়ার ও লোড <span class="arrow">▶</span></div>
+            <div class="section-content">
+                <div class="symbol" onclick="spawnSymbol('source-p')">ফেজ (L)</div>
+                <div class="symbol" onclick="spawnSymbol('source-n')">নিউট্রাল (N)</div>
+                <div class="symbol" onclick="spawnSymbol('light')">লাইট বাল্ব</div>
+                <div class="symbol" onclick="spawnSymbol('motor-3p')">৩-ফেজ মোটর</div>
+                <div class="symbol" onclick="spawnSymbol('source-3p')">৩-ফেজ সাপ্লাই</div>
+                <div class="symbol" onclick="spawnSymbol('buzzer')">বাজার / অ্যালার্ম</div>
+                <div class="symbol" onclick="spawnSymbol('limit-switch')">লিমিট সুইচ (NO)</div>
+            </div>
+
+            <div class="section-title" onclick="togglePaletteSection(this)">ওয়ারিং LINE <span class="arrow">▶</span></div>
+            <div class="section-content">
+                <div class="symbol" onclick="spawnSymbol('wire-h')">অনুভূমিক তার</div>
+                <div class="symbol" onclick="spawnSymbol('wire-v')">উল্লম্ব তার</div>
+                <div class="symbol" onclick="spawnSymbol('corner')">কর্নার জয়েন্ট</div>
+                <div class="symbol" onclick="spawnSymbol('t-joint')">টি-কানেকশন</div>
+                <div class="symbol" onclick="spawnSymbol('wire-cross')">তার ক্রসিং (Crossover)</div>
+            </div>
+            
+            <div class="section-title" onclick="togglePaletteSection(this)">সুরক্ষা ও সুইচ <span class="arrow">▶</span></div>
+            <div class="section-content">
+                <div class="symbol" onclick="spawnSymbol('push-no')">পুশ সুইচ NO (3-4)</div>
+                <div class="symbol" onclick="spawnSymbol('push-nc')">পুশ সুইচ NC (1-2)</div>
+                <div class="symbol" onclick="spawnSymbol('fuse')">ফিউজ (Fuse)</div>
+                <div class="symbol" onclick="spawnSymbol('cb')">ব্রেকার (CB)</div>
+            </div>
+
+            <div class="section-title" onclick="togglePaletteSection(this)">ম্যাগনেটিক কন্ট্যাক্টর <span class="arrow">▶</span></div>
+            <div class="section-content">
+                <div class="symbol" onclick="spawnSymbol('km-coil')">KM কয়েল (A1-A2)</div>
+                <div class="symbol" onclick="spawnSymbol('km-contact')">KM অক্স NO (13-14)</div>
+                <div class="symbol" onclick="spawnSymbol('km-contact-nc')">KM অক্স NC (21-22)</div>
+            </div>
+
+            <div class="section-title" onclick="togglePaletteSection(this)">টাইমার কন্টাক্ট <span class="arrow">▶</span></div>
+            <div class="section-content">
+                <div class="symbol" onclick="spawnSymbol('timer-coil')">KT কয়েল (2-7)</div>
+                <div class="symbol" onclick="spawnSymbol('timer-no')">KT অক্স NO (8-6)</div>
+                <div class="symbol" onclick="spawnSymbol('timer-nc')">KT অক্স NC (8-5)</div>
+            </div>
+
+            <div class="section-title" onclick="togglePaletteSection(this)">থার্মাল ওভারলোড (OLR) <span class="arrow">▶</span></div>
+            <div class="section-content">
+                <div class="symbol" onclick="spawnSymbol('olr-coil')">OLR মেইন মডিউল</div>
+                <div class="symbol" onclick="spawnSymbol('olr-nc')">OLR অক্স NC (95-96)</div>
+                <div class="symbol" onclick="spawnSymbol('olr-no')">OLR অক্স NO (97-98)</div>
+            </div>
+
+            <div class="section-title" onclick="togglePaletteSection(this)">সেন্সর ও কন্ট্রোলার <span class="arrow">▶</span></div>
+            <div class="section-content">
+                <div class="symbol" onclick="spawnSymbol('pt100')">PT100 (RTD)</div>
+                <div class="symbol" onclick="spawnSymbol('sensor')">সেন্সর (NO/NC)</div>
+                <div class="symbol" onclick="spawnSymbol('tc-module')">টেম্প. কন্ট্রোলার (TC)</div>
+                <div class="symbol" onclick="spawnSymbol('tc-no')">TC অক্স NO</div>
+                <div class="symbol" onclick="spawnSymbol('tc-nc')">TC অক্স NC</div>
+            </div>
+        </div>
+
+        <!-- Canvas Drawspace Panels -->
+        <div id="canvas-container">
+            <div id="canvas-info-box">
+                <div id="displayTitle" style="font-weight: bold; font-size: 14px; color: #1e272e;"></div>
+                <div id="displayName" style="font-size: 11px; color: #7f8c8d; margin-top: 2px; font-weight: 600;"></div>
+            </div>
+            <div id="canvas"></div>
+        </div>
+    </div>
+
+    <!-- Storage Management Modules -->
+    <div id="saved-diagrams-panel">
+        <h3>আপনার সেভ করা ডায়াগ্রাম সমূহ (Firebase)</h3>
+        <div id="saved-list-container"></div>
+        <button class="close-panel-btn" onclick="toggleSavedList()">বন্ধ করুন</button>
+    </div>
+
+    <!-- Footer Copyright Banner -->
+    <div style="position: fixed; bottom: 10px; right: 10px; background: rgba(44, 62, 80, 0.75); border: 2px solid #1abc9c; color: white; padding: 12px 16px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); z-index: 10000; font-size: 12px; line-height: 1.5;">
+        <b style="color: #1abc9c; font-size: 13px;">© SUBAS KUMAR MAHATO</b><br>
+        <span style="color: #f39c12;">ফাইলটি শেয়ার করে নিতে চাইলে পেমেন্ট করুন।</span><br>
+        <b>ফি: 10tk</b> | <span style="color: #2ecc71; font-weight: bold;">বিকাশ: 01615728101</span>
+    </div>
+
+    <!-- Trigger Nodes for Mobile Layout Sheets -->
+    <div id="bottom-sheet-overlay" onclick="toggleBottomSheet()"></div>
+    <button id="fab-menu-btn" onclick="toggleBottomSheet()">➕ অ্যাড সিম্বল</button>
+
+    <div id="short-circuit-alert" style="display:none; position:fixed; top:20%; left:10%; right:10%; background:#e74c3c; color:white; padding:20px; text-align:center; border-radius:10px; z-index:9999; font-weight:bold; border: 3px solid #fff;">
+        ⚠️ সতর্কবার্তা: শর্ট সার্কিট ডিটেক্ট হয়েছে!
+    </div>
+
+    <!-- Core Simulator Logic Engine Script -->
+    <script>
+        // --- Firebase Configuration Configuration Setup ---
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY", 
+            authDomain: "circuitsimulator-76c96.firebaseapp.com",
+            databaseURL: "https://circuitsimulator-76c96-default-rtdb.asia-southeast1.firebasedatabase.app/",
+            projectId: "circuitsimulator-76c96",
+            storageBucket: "circuitsimulator-76c96.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        // Handle safe initialization
+        if (firebase.apps.length === 0) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const database = firebase.database();
+                let copiedSymbolData = null; // কপি করা সিম্বলের ডাটা রাখার গ্লোবাল ভ্যারিয়েবল
+
+
+        // Mobile Bottom Sheet Control Toggle Engine
+        function toggleBottomSheet() {
+            const palette = document.getElementById('palette');
+            const overlay = document.getElementById('bottom-sheet-overlay');
+            if (palette.classList.contains('open')) {
+                palette.classList.remove('open'); overlay.classList.remove('show');
+            } else {
+                palette.classList.add('open'); overlay.classList.add('show');
+            }
+        }
+
+        // Fixed Mobile Event Delegation Error Selector
+        document.getElementById('palette').addEventListener('click', function(e) {
+            if (e.target.closest('.symbol') || e.target.classList.contains('symbol')) {
+                if(window.innerWidth <= 768) {
+                    toggleBottomSheet();
+                }
+            }
+        });
+
+        // Secured Encoded Protection Keys Activation Systems
+        const SECRET_HASH = "U1VCQVMyMA=="; 
+
+        function checkDeviceActivation() {
+            if (localStorage.getItem('isCircuitSimPaid') === 'true') {
+                document.getElementById('activation-overlay').style.display = 'none';
+            } else {
+                document.getElementById('activation-overlay').style.display = 'flex';
+            }
+        }
+
+        function validateActivationCode() {
+            const enteredCode = document.getElementById('activationCodeInput').value.trim();
+            if (enteredCode && btoa(enteredCode) === SECRET_HASH) {
+                localStorage.setItem('isCircuitSimPaid', 'true');
+                alert("🎉 অভিনন্দন! আপনার ডিভাইসটি সফলভাবে একটিভেট হয়েছে।");
+                document.getElementById('activation-overlay').style.display = 'none';
+            } else {
+                alert("❌ ভুল কোড! সঠিক কোড পেতে অ্যাডমিনের সাথে যোগাযোগ করুন।");
+            }
+        }
+        checkDeviceActivation();
+
+        // Dark-Light Interface Swap Control Engine
+        function toggleCanvasTheme() {
+            const canvas = document.getElementById('canvas');
+            const btn = document.querySelector('.theme-btn');
+            canvas.classList.toggle('dark-theme');
+            if(canvas.classList.contains('dark-theme')) {
+                btn.innerText = "☀️ লাইট থিম"; btn.style.color = "#f1c40f"; btn.style.borderColor = "#f1c40f";
+            } else {
+                btn.innerText = "🌙 ডার্ক থিম"; btn.style.color = "#1abc9c"; btn.style.borderColor = "#1abc9c";
+            }
+        }
+
+        // State Machine Storage Stacks Variables
+        let undoStack = []; let redoStack = []; let isLocked = false; let isDeleteMode = false;
+
+        function saveState() {
+            let state = getCanvasData();
+            undoStack.push(JSON.stringify(state));
+            if (undoStack.length > 30) undoStack.shift(); 
+            redoStack = []; 
+        }
+
+        function undo() {
+            if (isLocked || undoStack.length === 0) return;
+            redoStack.push(JSON.stringify(getCanvasData()));
+            let prevState = undoStack.pop();
+            restoreState(JSON.parse(prevState));
+        }
+
+        function redo() {
+            if (isLocked || redoStack.length === 0) return;
+            undoStack.push(JSON.stringify(getCanvasData()));
+            let nextState = redoStack.pop();
+            restoreState(JSON.parse(nextState));
+        }
+
+        function restoreState(elementsData) {
+            canvas.innerHTML = ''; clearSelection();
+            if (Array.isArray(elementsData)) {
+                elementsData.forEach(data => rebuildSymbolFromData(data));
+            }
+            calculateLiveCircuit();
+        }
+
+        function toggleLock() {
+            isLocked = !isLocked;
+            let btn = document.getElementById('lockToggleBtn');
+            if(isLocked) {
+                if (isDeleteMode) toggleDeleteMode();
+                btn.innerText = "🔒 লকড"; btn.style.backgroundColor = "#e74c3c";
+                document.body.classList.add('locked-mode'); clearSelection();
+            } else {
+                btn.innerText = "🔓 আনলক"; btn.style.backgroundColor = "#f39c12";
+                document.body.classList.remove('locked-mode');
+            }
+        }
+
+        function toggleDeleteMode() {
+            if (isLocked) return; 
+            isDeleteMode = !isDeleteMode;
+            let btn = document.getElementById('deleteModeBtn');
+            if(isDeleteMode) {
+                btn.innerText = "🗑️ ডিলিট: অন"; btn.style.backgroundColor = "#e74c3c"; 
+                document.body.classList.add('delete-mode-active'); clearSelection();
+            } else {
+                btn.innerText = "🗑️ ডিলিট: অফ"; btn.style.backgroundColor = "#c0392b"; 
+                document.body.classList.remove('delete-mode-active');
+            }
+        }
+
+        // Accordion Controls Interfaces Engine Loops
+        function togglePaletteSection(headerElement) {
+            const content = headerElement.nextElementSibling;
+            const arrow = headerElement.querySelector('.arrow');
+            if (content.classList.contains('open')) {
+                content.classList.remove('open'); arrow.innerText = '▶';
+            } else {
+                content.classList.add('open'); arrow.innerText = '▼';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const firstHeader = document.querySelector('.section-title');
+            if(firstHeader) togglePaletteSection(firstHeader);
+        });
+
+        const canvas = document.getElementById('canvas');
+        const container = document.getElementById('canvas-container');
+        const modeToggle = document.getElementById('modeToggle');
+        const logDisplay = document.getElementById('diagnostic-log');
+        
+        let zoomScale = 1.0; let isCanvasScrollMode = false; let activeSelectedElement = null;
+        let canvasX = 0, canvasY = 0; const GRID_SIZE = 60;
+
+        const groupWithIds = [
+            'km-coil', 'km-contact', 'km-contact-nc', 'timer-coil', 'timer-no', 'timer-nc', 
+            'olr-coil', 'olr-nc', 'olr-no', 'tc-module', 'tc-no', 'tc-nc'
+        ];
+
+        const symbolLabels = {
+            'source-p': 'L', 'source-n': 'N', 'light': 'বাল্ব', 'wire-h': 'তার (H)', 'wire-v': 'তার (V)',
+            'corner': 'কর্নার', 't-joint': 'টি-জয়েন্ট', 'wire-cross': 'তার ক্রসিং', 'source-3p': '৩-ফেজ', 'fuse': 'ফিউজ', 'cb': 'ব্রেকার',
+            'push-no': 'পুশ NO (3-4)', 'push-nc': 'পুশ NC (1-2)', 'km-contact': 'KM NO (13-14)', 'km-contact-nc': 'KM NC (21-22)',
+            'km-coil': 'কন্ট্যাক্টর (A1-A2)', 'timer-coil': 'টাইমার (2-7)', 'motor-3p': 'মোটর',
+            'olr-coil': 'OLR মডিউল', 'olr-nc': 'OLR NC (95-96)', 'olr-no': 'OLR NO (97-98)', 'timer-no': 'KT NO (8-6)', 'timer-nc': 'KT NC (8-5)',
+            'pt100': 'PT100 (RTD)', 'sensor': 'সেন্সর', 'tc-module': 'টেম্প. কন্ট্রোলার', 'tc-no': 'TC NO', 'tc-nc': 'TC NC', 'buzzer': 'বাজার অ্যালার্ম', 'limit-switch': 'লিমিট SW'
+        };
+
+        const svgTemplates = {
+            'source-p': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="40" stroke="#e74c3c" stroke-width="3"/><circle cx="20" cy="10" r="5" fill="#e74c3c"/><text x="10" y="14" font-size="10" font-weight="bold" fill="#e74c3c">L</text></svg>`,
+            'source-n': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="40" stroke="#3498db" stroke-width="3"/><circle cx="20" cy="10" r="5" fill="#3498db"/><text x="10" y="14" font-size="10" font-weight="bold" fill="#3498db">N</text></svg>`,
+            'light': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="10" stroke="#2c3e50" stroke-width="2.5"/><circle class="light-bulb" cx="20" cy="20" r="10" fill="#ffffff" stroke="#f39c12" stroke-width="2.5"/><path d="M 14 14 L 26 26 M 26 14 L 14 26" stroke="#f39c12" stroke-width="1.5"/><line class="flow-line" x1="20" y1="30" x2="20" y2="40" stroke="#2c3e50" stroke-width="2.5"/></svg>`,
+            'wire-h': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="0" y1="20" x2="40" y2="20" stroke="#7f8c8d" stroke-width="3"/></svg>`,
+            'wire-v': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="40" stroke="#7f8c8d" stroke-width="3"/></svg>`,
+            'corner': `<svg viewBox="0 0 40 40"><path class="flow-line" d="M 20 40 L 20 20 L 40 20" fill="none" stroke="#7f8c8d" stroke-width="3"/></svg>`,
+            't-joint': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="0" y1="20" x2="40" y2="20" stroke="#7f8c8d" stroke-width="3"/><line class="flow-line" x1="20" y1="0" x2="20" y2="40" stroke="#7f8c8d" stroke-width="3"/><circle cx="20" cy="20" r="3.5" fill="#7f8c8d"/></svg>`,
+            'wire-cross': `<svg viewBox="0 0 40 40"><line class="flow-line-h" x1="0" y1="20" x2="40" y2="20" stroke="#7f8c8d" stroke-width="3"/><line class="flow-line-v" x1="20" y1="0" x2="20" y2="13" stroke="#7f8c8d" stroke-width="3"/><path class="flow-line-v" d="M 20 13 A 7 7 0 0 1 20 27" fill="none" stroke="#7f8c8d" stroke-width="3"/><line class="flow-line-v" x1="20" y1="27" x2="20" y2="40" stroke="#7f8c8d" stroke-width="3"/></svg>`,
+            'source-3p': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="10" y1="0" x2="10" y2="40" stroke="#ea2027" stroke-width="2.5"/><line class="flow-line" x1="20" y1="0" x2="20" y2="40" stroke="#ffc312" stroke-width="2.5"/><line class="flow-line" x1="30" y1="0" x2="30" y2="40" stroke="#0652dd" stroke-width="2.5"/><text x="20" y="36" font-size="7" fill="#2c3e50" font-weight="bold" text-anchor="middle">L1 L2 L3</text></svg>`,
+            'fuse': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="10" stroke="#2c3e50" stroke-width="2.5"/><rect x="12" y="10" width="16" height="20" fill="#ffffff" stroke="#2c3e50" stroke-width="2.5"/><line class="switch-pole flow-line" x1="20" y1="10" x2="20" y2="30" stroke="#2c3e50" stroke-width="2.5"/><line class="flow-line" x1="20" y1="30" x2="20" y2="40" stroke="#2c3e50" stroke-width="2.5"/></svg>`,
+            'cb': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="12" stroke="#2c3e50" stroke-width="2.5"/><circle cx="20" cy="12" r="2" fill="#2c3e50"/><line class="switch-pole flow-line" x1="20" y1="12" x2="20" y2="28" stroke="#2c3e50" stroke-width="3"/><circle cx="20" cy="28" r="2" fill="#2c3e50"/><line class="flow-line" x1="20" y1="28" x2="20" y2="40" stroke="#2c3e50" stroke-width="2.5"/></svg>`,
+            'push-no': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="12" stroke="#2c3e50" stroke-width="2.5"/><circle cx="20" cy="12" r="2" fill="#2c3e50"/><circle cx="20" cy="28" r="2" fill="#2c3e50"/><line class="flow-line" x1="20" y1="28" x2="20" y2="40" stroke="#2c3e50" stroke-width="2.5"/><line class="switch-pole" x1="10" y1="16" x2="30" y2="16" stroke="#e74c3c" stroke-width="3"/><text x="28" y="10" font-size="5" font-weight="bold" fill="#7f8c8d">3</text><text x="28" y="34" font-size="5" font-weight="bold" fill="#7f8c8d">4</text></svg>`,
+            'push-nc': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="14" stroke="#2c3e50" stroke-width="2.5"/><circle cx="20" cy="14" r="2" fill="#2c3e50"/><circle cx="20" cy="26" r="2" fill="#2c3e50"/><line class="flow-line" x1="20" y1="26" x2="20" y2="40" stroke="#2c3e50" stroke-width="2.5"/><line class="switch-pole flow-line" x1="10" y1="14" x2="30" y2="14" stroke="#2ecc71" stroke-width="3"/><text x="28" y="10" font-size="5" font-weight="bold" fill="#7f8c8d">1</text><text x="28" y="34" font-size="5" font-weight="bold" fill="#7f8c8d">2</text></svg>`,
+            'km-contact': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="14" stroke="#2c3e50" stroke-width="2.5"/><circle cx="20" cy="14" r="1.5" fill="#2c3e50"/><circle cx="20" cy="26" r="1.5" fill="#2c3e50"/><line class="switch-pole" x1="10" y1="18" x2="30" y2="18" stroke="#e74c3c" stroke-width="2.5"/><line class="flow-line" x1="20" y1="26" x2="20" y2="40" stroke="#2c3e50" stroke-width="2.5"/><text class="svg-id-text" x="20" y="10" font-size="5" fill="#2980b9" font-weight="bold" text-anchor="middle">KM</text><text x="32" y="24" font-size="6" fill="#2980b9" font-weight="bold">NO</text><text x="28" y="10" font-size="5" fill="#7f8c8d">13</text><text x="28" y="34" font-size="5" fill="#7f8c8d">14</text></svg>`,
+            'km-contact-nc': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="14" stroke="#2c3e50" stroke-width="2.5"/><circle cx="20" cy="14" r="1.5" fill="#2c3e50"/><circle cx="20" cy="26" r="1.5" fill="#2c3e50"/><line class="switch-pole flow-line" x1="10" y1="14" x2="30" y2="14" stroke="#2ecc71" stroke-width="2.5"/><line class="flow-line" x1="20" y1="26" x2="20" y2="40" stroke="#2c3e50" stroke-width="2.5"/><text class="svg-id-text" x="20" y="10" font-size="5" fill="#e74c3c" font-weight="bold" text-anchor="middle">KM</text><text x="32" y="24" font-size="6" fill="#e74c3c" font-weight="bold">NC</text><text x="28" y="10" font-size="5" fill="#7f8c8d">21</text><text x="28" y="34" font-size="5" fill="#7f8c8d">22</text></svg>`,
+            'km-coil': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="12" stroke="#2c3e50" stroke-width="2.5"/><rect class="load-box" x="5" y="12" width="30" height="16" fill="#ffffff" stroke="#2980b9" stroke-width="2.5"/><text class="svg-id-text" x="20" y="23" font-size="9" font-weight="bold" fill="#2980b9" text-anchor="middle">KM</text><line class="flow-line" x1="20" y1="28" x2="20" y2="40" stroke="#2c3e50" stroke-width="2.5"/><text x="20" y="9" font-size="5" fill="#7f8c8d" text-anchor="middle">A1</text><text x="20" y="36" font-size="5" fill="#7f8c8d" text-anchor="middle">A2</text></svg>`,
+            'timer-coil': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="12" stroke="#2c3e50" stroke-width="2.5"/><rect class="load-box timer-box" x="5" y="12" width="30" height="16" fill="#ffffff" stroke="#8e44ad" stroke-width="2.5"/><line x1="5" y1="12" x2="12" y2="28" stroke="#8e44ad" stroke-width="1.5"/><line x1="12" y1="12" x2="5" y2="28" stroke="#8e44ad" stroke-width="1.5"/><text class="svg-id-text" x="22" y="23" font-size="9" font-weight="bold" fill="#8e44ad" text-anchor="middle">KT</text><line class="flow-line" x1="20" y1="28" x2="20" y2="40" stroke="#2c3e50" stroke-width="2.5"/><text x="20" y="9" font-size="5" fill="#7f8c8d" text-anchor="middle">2</text><text x="20" y="36" font-size="5" fill="#7f8c8d" text-anchor="middle">7</text></svg>`,
+            'timer-no': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="14" stroke="#2c3e50" stroke-width="2.5"/><circle cx="20" cy="14" r="1.5" fill="#2c3e50"/><circle cx="20" cy="26" r="1.5" fill="#2c3e50"/><line class="switch-pole" x1="10" y1="18" x2="30" y2="18" stroke="#e74c3c" stroke-width="2.5"/><path d="M 10 18 C 12 14, 18 14, 20 18" fill="none" stroke="#8e44ad" stroke-width="1.5"/><line class="flow-line" x1="20" y1="26" x2="20" y2="40" stroke="#2c3e50" stroke-width="2.5"/><text class="svg-id-text" x="20" y="10" font-size="5" fill="#8e44ad" font-weight="bold" text-anchor="middle">KT</text><text x="32" y="24" font-size="6" fill="#8e44ad" font-weight="bold">NO</text><text x="28" y="10" font-size="5" fill="#7f8c8d">8</text><text x="28" y="34" font-size="5" fill="#7f8c8d">6</text></svg>`,
+            'timer-nc': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="14" stroke="#2c3e50" stroke-width="2.5"/><circle cx="20" cy="14" r="1.5" fill="#2c3e50"/><circle cx="20" cy="26" r="1.5" fill="#2c3e50"/><line class="switch-pole flow-line" x1="10" y1="14" x2="30" y2="14" stroke="#2ecc71" stroke-width="2.5"/><path d="M 10 14 C 12 10, 18 10, 20 14" fill="none" stroke="#8e44ad" stroke-width="1.5"/><line class="flow-line" x1="20" y1="26" x2="20" y2="40" stroke="#2c3e50" stroke-width="2.5"/><text class="svg-id-text" x="20" y="10" font-size="5" fill="#8e44ad" font-weight="bold" text-anchor="middle">KT</text><text x="32" y="24" font-size="6" fill="#8e44ad" font-weight="bold">NC</text><text x="28" y="10" font-size="5" fill="#7f8c8d">8</text><text x="28" y="34" font-size="5" fill="#7f8c8d">5</text></svg>`,
+            'olr-coil': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="12" stroke="#2c3e50" stroke-width="2.5"/><rect class="load-box olr-box" x="6" y="12" width="28" height="16" fill="#ffffff" stroke="#d35400" stroke-width="2.5"/><path d="M 10 20 Q 14 15, 20 20 T 30 20" fill="none" stroke="#d35400" stroke-width="2"/><text class="svg-id-text" x="20" y="26" font-size="6" font-weight="bold" fill="#d35400" text-anchor="middle">OLR TRIPPED</text><line class="flow-line" x1="20" y1="28" x2="20" y2="40" stroke="#2c3e50" stroke-width="2.5"/></svg>`,
+            'olr-nc': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="14" stroke="#2c3e50" stroke-width="2.5"/><circle cx="20" cy="14" r="1.5" fill="#2c3e50"/><circle cx="20" cy="26" r="1.5" fill="#2c3e50"/><line class="switch-pole flow-line" x1="10" y1="14" x2="30" y2="14" stroke="#2ecc71" stroke-width="2.5"/><path d="M 6 14 L 6 18 L 10 18" fill="none" stroke="#d35400" stroke-width="1.5"/><line class="flow-line" x1="20" y1="26" x2="20" y2="40" stroke="#2c3e50" stroke-width="2.5"/><text class="svg-id-text" x="20" y="10" font-size="5" fill="#d35400" font-weight="bold" text-anchor="middle">OLR</text><text x="32" y="24" font-size="6" fill="#d35400" font-weight="bold">NC</text><text x="28" y="10" font-size="5" fill="#7f8c8d">95</text><text x="28" y="34" font-size="5" fill="#7f8c8d">96</text></svg>`,
+            'olr-no': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="14" stroke="#2c3e50" stroke-width="2.5"/><circle cx="20" cy="14" r="1.5" fill="#2c3e50"/><circle cx="20" cy="26" r="1.5" fill="#2c3e50"/><line class="switch-pole" x1="10" y1="18" x2="30" y2="18" stroke="#e74c3c" stroke-width="2.5"/><path d="M 6 18 L 6 22 L 10 22" fill="none" stroke="#d35400" stroke-width="1.5"/><line class="flow-line" x1="20" y1="26" x2="20" y2="40" stroke="#2c3e50" stroke-width="2.5"/><text class="svg-id-text" x="20" y="10" font-size="5" fill="#d35400" font-weight="bold" text-anchor="middle">OLR</text><text x="32" y="24" font-size="6" fill="#d35400" font-weight="bold">NO</text><text x="28" y="10" font-size="5" fill="#7f8c8d">97</text><text x="28" y="34" font-size="5" fill="#7f8c8d">98</text></svg>`,
+            'motor-3p': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="10" stroke="#2c3e50" stroke-width="2.5"/><g class="motor-rotor-group"><circle class="load-circle" cx="20" cy="24" r="13" fill="#ffffff" stroke="#d35400" stroke-width="2.5"/><text x="20" y="28" font-size="9" font-weight="bold" fill="#d35400" text-anchor="middle">M3~</text></g></svg>`,
+            'pt100': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="10" stroke="#2c3e50" stroke-width="2.5"/><rect x="14" y="10" width="12" height="20" fill="#ffffff" stroke="#7f8c8d" stroke-width="2"/><text x="20" y="23" font-size="6" font-weight="bold" fill="#2c3e50" text-anchor="middle">PT100</text><line class="flow-line" x1="16" y1="30" x2="16" y2="40" stroke="#2c3e50" stroke-width="2"/><line class="flow-line" x1="24" y1="30" x2="24" y2="40" stroke="#2c3e50" stroke-width="2"/></svg>`,
+            'sensor': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="12" stroke="#2c3e50" stroke-width="2.5"/><rect x="10" y="12" width="20" height="16" fill="#ffffff" stroke="#16a085" stroke-width="2.5"/><circle cx="20" cy="20" r="4" fill="#16a085"/><line class="switch-pole flow-line" x1="20" y1="28" x2="20" y2="40" stroke="#2c3e50" stroke-width="2.5"/></svg>`,
+            'tc-module': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="10" stroke="#2c3e50" stroke-width="2.5"/><rect class="load-box tc-box" x="4" y="10" width="32" height="20" fill="#ffffff" stroke="#2980b9" stroke-width="2.5"/><text class="svg-id-text" x="20" y="18" font-size="7" font-weight="bold" fill="#2980b9" text-anchor="middle">TC</text><text class="tc-val" x="20" y="26" font-size="7" fill="#e74c3c" font-weight="bold" text-anchor="middle">85°C</text><line class="flow-line" x1="20" y1="30" x2="20" y2="40" stroke="#2c3e50" stroke-width="2.5"/></svg>`,
+            'tc-no': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="14" stroke="#2c3e50" stroke-width="2.5"/><circle cx="20" cy="14" r="1.5" fill="#2c3e50"/><circle cx="20" cy="26" r="1.5" fill="#2c3e50"/><line class="switch-pole" x1="10" y1="18" x2="30" y2="18" stroke="#e74c3c" stroke-width="2.5"/><text class="svg-id-text" x="20" y="10" font-size="5" fill="#2980b9" font-weight="bold" text-anchor="middle">TC</text><text x="32" y="24" font-size="6" fill="#2980b9" font-weight="bold">NO</text></svg>`,
+            'tc-nc': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="14" stroke="#2c3e50" stroke-width="2.5"/><circle cx="20" cy="14" r="1.5" fill="#2c3e50"/><circle cx="20" cy="26" r="1.5" fill="#2c3e50"/><line class="switch-pole flow-line" x1="10" y1="14" x2="30" y2="14" stroke="#2ecc71" stroke-width="2.5"/><text class="svg-id-text" x="20" y="10" font-size="5" fill="#2980b9" font-weight="bold" text-anchor="middle">TC</text><text x="32" y="24" font-size="6" fill="#2980b9" font-weight="bold">NC</text></svg>`,
+            'buzzer': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="15" stroke="#2c3e50" stroke-width="2.5"/><path class="load-box" d="M 10 15 L 30 15 L 25 28 L 15 28 Z" fill="#ffffff" stroke="#e67e22" stroke-width="2"/><line class="flow-line" x1="20" y1="28" x2="20" y2="40" stroke="#2c3e50" stroke-width="2.5"/></svg>`,
+            'limit-switch': `<svg viewBox="0 0 40 40"><line class="flow-line" x1="20" y1="0" x2="20" y2="15" stroke="#2c3e50" stroke-width="2.5"/><circle cx="20" cy="15" r="1.5" fill="#2c3e50"/><line class="switch-pole" x1="10" y1="12" x2="25" y2="12" stroke="#e74c3c" stroke-width="2.5"/><circle cx="28" cy="12" r="2" fill="#7f8c8d"/><line class="flow-line" x1="20" y1="26" x2="20" y2="40" stroke="#2c3e50" stroke-width="2.5"/><circle cx="20" cy="26" r="1.5" fill="#2c3e50"/></svg>`
+        };
+
+        function zoomIn() { if (zoomScale < 1.8) { zoomScale += 0.1; updateCanvasTransform(); } }
+        function zoomOut() { if (zoomScale > 0.6) { zoomScale -= 0.1; updateCanvasTransform(); } }
+        function updateCanvasTransform() { canvas.style.transform = `translate(${canvasX}px, ${canvasY}px) scale(${zoomScale})`; }
+        
+        function toggleMode() { 
+            isCanvasScrollMode = !isCanvasScrollMode; 
+            modeToggle.innerText = isCanvasScrollMode ? "মোড: ক্যানভাস মুভ" : "মোড: সিম্বল মুভ"; 
+            modeToggle.style.backgroundColor = isCanvasScrollMode ? "#9b59b6" : "#f39c12"; 
+            clearSelection(); 
+        }
+        function clearSelection() { if (activeSelectedElement) { activeSelectedElement.classList.remove('selected'); activeSelectedElement = null; } }
+
+        function updateLiveLabels() {
+            const title = document.getElementById('diagramTitle').value.trim();
+            const name = document.getElementById('studentName').value.trim();
+            const infoBox = document.getElementById('canvas-info-box');
+            
+            if (title || name) {
+                infoBox.style.display = 'block';
+                document.getElementById('displayTitle').innerText = title;
+                document.getElementById('displayName').innerText = name ? "তৈরি করেছেন: " + name : "";
+            } else {
+                infoBox.style.display = 'none';
+            }
+        }
+
+        // Panning Engine System Hooks
+        let isPanning = false, panStartX, panStartY;
+        container.addEventListener('mousedown', (e) => { if ((e.target === container || e.target === canvas) && isCanvasScrollMode) { isPanning = true; panStartX = e.clientX - canvasX; panStartY = e.clientY - canvasY; } });
+        container.addEventListener('mousemove', (e) => { if (isPanning) { canvasX = e.clientX - panStartX; canvasY = e.clientY - panStartY; updateCanvasTransform(); } });
+        document.addEventListener('mouseup', () => isPanning = false);
+        
+        container.addEventListener('touchstart', (e) => { if ((e.target === container || e.target === canvas) && isCanvasScrollMode && e.touches.length === 1) { isPanning = true; panStartX = e.touches[0].clientX - canvasX; panStartY = e.touches[0].clientY - canvasY; } }, {passive:true});
+        container.addEventListener('touchmove', (e) => { if (isPanning && e.touches.length === 1) { canvasX = e.touches[0].clientX - panStartX; canvasY = e.touches[0].clientY - panStartY; updateCanvasTransform(); } }, {passive:true});
+        document.addEventListener('touchend', () => isPanning = false);
+
+        function updateElementLabelsAndTexts(el) {
+            let type = el.dataset.type; let id = el.dataset.id || "1"; let labelSpan = el.querySelector('.symbol-label');
+            if(groupWithIds.includes(type)) {
+                let baseName = symbolLabels[type];
+                let displayName = baseName.replace('KM', 'KM' + id).replace('KT', 'KT' + id).replace('OLR', 'OLR' + id).replace('TC', 'TC' + id).replace('কন্ট্যাক্টর', 'কন্ট্যাক্টর ' + id).replace('টাইমার', 'টাইমার ' + id);
+                if(labelSpan) labelSpan.innerHTML = `${displayName} <span class="status-text"></span>`;
+                
+                let svgTextElement = el.querySelector('.symbol-graphic-container svg .svg-id-text');
+                if(svgTextElement) {
+                    if(type.includes('km')) svgTextElement.textContent = 'KM' + id;
+                    else if(type.includes('timer')) svgTextElement.textContent = 'KT' + id;
+                    else if(type.includes('olr') && type !== 'olr-coil') svgTextElement.textContent = 'OLR' + id;
+                    else if(type.includes('tc')) svgTextElement.textContent = 'TC' + id;
+                }
+            }
+            if(['wire-h', 'wire-v', 'corner', 't-joint', 'wire-cross'].includes(type) && labelSpan) {
+                labelSpan.style.display = 'none';
+            }
+        }
+
+        function setSwitchState(el, isClosed) {
+            const type = el.dataset.type; const gc = el.querySelector('.symbol-graphic-container'); const pole = gc ? gc.querySelector('.switch-pole') : null;
+            el.dataset.closed = isClosed ? "true" : "false";
+            
+            if(pole) {
+                if(type === 'push-no' || type === 'limit-switch') {
+                    pole.setAttribute('y1', isClosed ? '20' : '16'); pole.setAttribute('y2', isClosed ? '20' : '16');
+                    pole.setAttribute('stroke', isClosed ? '#2ecc71' : '#e74c3c');
+                } else if(type === 'push-nc') {
+                    pole.setAttribute('y1', isClosed ? '14' : '10'); pole.setAttribute('y2', isClosed ? '14' : '10');
+                    pole.setAttribute('stroke', isClosed ? '#2ecc71' : '#e74c3c');
+                } else if(type === 'cb') {
+                    pole.setAttribute('x2', isClosed ? '20' : '32'); pole.setAttribute('stroke', isClosed ? '#2ecc71' : '#e74c3c');
+                }
+            }
+            calculateLiveCircuit();
+        }
+
+        function attachElementEvents(newElem) {
+            // --- প্রতিটি উপাদানের জন্য বুলেট পয়েন্ট তৈরি করার লজিক ---
+    let sType = newElem.dataset.type;
+    newElem.querySelectorAll('.terminal-dot').forEach(d => d.remove()); // ডুপ্লিকেট এড়াতে
+
+    if (sType === 'wire-v') {
+        // উল্লম্ব তারের জন্য উপরে এবং নিচে বুলেট
+        createTerminalDot(newElem, 'top', '39px', '-6px');
+        createTerminalDot(newElem, 'bottom', '39px', '84px');
+    } else {
+        // অনুভূমিক তার এবং অন্যান্য সব সিম্বলের জন্য ডানে ও বামে বুলেট
+        createTerminalDot(newElem, 'top', '-6px', '39px');
+        createTerminalDot(newElem, 'bottom', '84px', '39px');
+    }
+
+    function createTerminalDot(parent, pos, left, top) {
+        let dot = document.createElement('div');
+        dot.className = 'terminal-dot';
+        dot.dataset.pos = pos;
+        dot.style.left = left;
+        dot.style.top = top;
+        parent.appendChild(dot);
+        
+        // বুলেটে ক্লিক/টাচ ইভেন্ট
+        dot.addEventListener('click', (e) => {
+            if (isLocked) return;
+            e.stopPropagation();
+            handleTerminalDotClick(dot, parent);
+        });
+    }
+
+            const type = newElem.dataset.type; const graphicContainer = newElem.querySelector('.symbol-graphic-container');
+            const delBtn = newElem.querySelector('.delete-btn'); const rotBtn = newElem.querySelector('.rotate-btn'); const idBtn = newElem.querySelector('.id-btn');
+                // মোবাইলের জন্য কপি (Copy) বাটন তৈরি ও ইভেন্ট যুক্ত করা
+    let copyBtn = newElem.querySelector('.copy-btn');
+    if (!copyBtn) {
+        copyBtn = document.createElement('div');
+        copyBtn.className = 'copy-btn';
+        copyBtn.title = "কপি করুন";
+        newElem.appendChild(copyBtn);
+    }
+    copyBtn.addEventListener('click', (e) => {
+        if (isLocked) return;
+        e.stopPropagation();
+        copiedSymbolData = {
+            type: newElem.dataset.type,
+            rotation: newElem.dataset.rotation || "0",
+            id: newElem.dataset.id || "1"
+        };
+        document.getElementById('diagnostic-log').innerText = "📋 সিম্বল কপি হয়েছে! পেস্ট করতে ওপরের 'পেস্ট করুন' বাটনে চাপুন।";
+    });
+
+
+            delBtn.addEventListener('click', (e) => { 
+                if (isLocked) return; e.stopPropagation(); saveState(); newElem.remove(); clearSelection(); calculateLiveCircuit(); 
+            });
+
+            rotBtn.addEventListener('click', (e) => { 
+                if (isLocked) return; e.stopPropagation(); saveState();
+                let nextRot = (parseInt(newElem.dataset.rotation) + 90) % 360; newElem.dataset.rotation = nextRot; 
+                graphicContainer.style.transform = `rotate(${nextRot}deg)`; calculateLiveCircuit(); 
+            });
+
+            if(idBtn) {
+                idBtn.addEventListener('click', (e) => { 
+                    if (isLocked) return; e.stopPropagation(); saveState();
+                    let currentId = parseInt(newElem.dataset.id || "1"); currentId = currentId >= 10 ? 1 : currentId + 1;
+                    newElem.dataset.id = currentId.toString(); updateElementLabelsAndTexts(newElem); calculateLiveCircuit(); 
+                });
+            }
+
+            newElem.addEventListener('click', (e) => {
+                e.stopPropagation(); if (isCanvasScrollMode) return;
+                if (isDeleteMode && !isLocked) { saveState(); newElem.remove(); clearSelection(); calculateLiveCircuit(); return; }
+                if(type === 'push-no' || type === 'push-nc') {
+                    if (!isLocked && activeSelectedElement !== newElem) { clearSelection(); newElem.classList.add('selected'); activeSelectedElement = newElem; }
+                    return;
+                }
+                
+                if (isLocked || activeSelectedElement === newElem) {
+                    if(type === 'olr-coil') {
+                        if (!isLocked) saveState();
+                        let isTripped = newElem.dataset.tripped === "true"; newElem.dataset.tripped = isTripped ? "false" : "true";
+                        let box = graphicContainer.querySelector('.olr-box'); if(box) box.setAttribute('fill', isTripped ? '#ffffff' : '#e67e22');
+                        calculateLiveCircuit(); return;
+                    }
+                    if(type === 'tc-module') {
+                        if (!isLocked) saveState();
+                        let isActive = newElem.dataset.active === "true"; newElem.dataset.active = isActive ? "false" : "true";
+                        let box = graphicContainer.querySelector('.tc-box'); let valText = graphicContainer.querySelector('.tc-val');
+                        if(box) box.setAttribute('fill', isActive ? '#ffffff' : '#3498db');
+                        if(valText) valText.textContent = isActive ? "25°C" : "85°C (Hit!)";
+                        calculateLiveCircuit(); return;
+                    }
+                    if(type === 'sensor') { if (!isLocked) saveState(); let isClosed = newElem.dataset.closed === "true"; setSwitchState(newElem, !isClosed); return; }
+                    if(type.includes('source') || type === 'light' || type === 'motor-3p' || type === 'pt100' || type.includes('wire') || type === 't-joint' || type === 'corner' || type === 'wire-cross' || type === 'buzzer') return;
+
+                    if(!groupWithIds.includes(type) || type.includes('contact') || type.includes('-n')) {
+                        if (!isLocked) saveState(); let isClosed = newElem.dataset.closed === "true"; setSwitchState(newElem, !isClosed);
+                    }
+                    return;
+                }
+                clearSelection(); newElem.classList.add('selected'); activeSelectedElement = newElem;
+            });
+
+            if(type === 'push-no' || type === 'push-nc') {
+                const handlePress = (e) => {
+                    if (isCanvasScrollMode || e.target.closest('.delete-btn') || e.target.closest('.rotate-btn') || e.target.closest('.id-btn')) return;
+                    setSwitchState(newElem, type === 'push-no');
+                };
+                const handleRelease = (e) => { setSwitchState(newElem, type === 'push-nc'); };
+
+                newElem.addEventListener('mousedown', handlePress);
+                newElem.addEventListener('mouseup', handleRelease);
+                newElem.addEventListener('mouseleave', handleRelease);
+                newElem.addEventListener('touchstart', handlePress, {passive: true});
+                newElem.addEventListener('touchend', handleRelease, {passive: true});
+            }
+
+            // Dragging System Parameters Configuration Loop
+            let isDragging = false; let initialX; let initialY;
+            newElem.addEventListener("mousedown", dragStart);
+            newElem.addEventListener("touchstart", (e) => { dragStart(e.touches[0]); }, {passive: false});
+
+            function dragStart(e) {
+                if (isCanvasScrollMode || isLocked || isDeleteMode || e.target.closest('.delete-btn') || e.target.closest('.rotate-btn') || e.target.closest('.id-btn')) return;
+                clearSelection(); newElem.style.zIndex = "1000"; newElem.classList.add('selected'); activeSelectedElement = newElem;
+                let currentLeft = parseInt(newElem.style.left)||0; let currentTop = parseInt(newElem.style.top)||0;
+                initialX = e.clientX - (currentLeft * zoomScale); initialY = e.clientY - (currentTop * zoomScale);
+                isDragging = true;
+                newElem.dataset.startLeft = currentLeft; newElem.dataset.startTop = currentTop;
+
+                document.addEventListener("mousemove", dragMove); document.addEventListener("mouseup", dragEnd);
+                document.addEventListener("touchmove", dragTouchMove, {passive: false}); document.addEventListener("touchend", dragEnd);
+            }
+            function dragMove(e) { if (isDragging) { let moveX = (e.clientX - initialX) / zoomScale; let moveY = (e.clientY - initialY) / zoomScale; newElem.style.left = moveX + "px"; newElem.style.top = moveY + "px"; } }
+            function dragTouchMove(e) { if (isDragging) { e.preventDefault(); let touch = e.touches[0]; let moveX = (touch.clientX - initialX) / zoomScale; let moveY = (touch.clientY - initialY) / zoomScale; newElem.style.left = moveX + "px"; newElem.style.top = moveY + "px"; } }
+            
+            function dragEnd() { 
+                if (isDragging) { 
+                    isDragging = false; newElem.style.zIndex = "10"; 
+                    let currentLeft = parseInt(newElem.style.left)||0; let currentTop = parseInt(newElem.style.top)||0; 
+                    let snappedLeft = Math.round(currentLeft / GRID_SIZE) * GRID_SIZE; 
+                    let snappedTop = Math.round(currentTop / GRID_SIZE) * GRID_SIZE; 
+                    
+                    let startLeft = parseInt(newElem.dataset.startLeft); let startTop = parseInt(newElem.dataset.startTop);
+                    if (startLeft !== snappedLeft || startTop !== snappedTop) {
+                        newElem.style.left = startLeft + "px"; newElem.style.top = startTop + "px"; saveState();
+                    }
+                    newElem.style.left = snappedLeft + "px"; newElem.style.top = snappedTop + "px";
+
+                    document.removeEventListener("mousemove", dragMove); document.removeEventListener("mouseup", dragEnd); 
+                    document.removeEventListener("touchmove", dragTouchMove); document.removeEventListener("touchend", dragEnd); 
+                    calculateLiveCircuit(); 
+                } 
+            }
+        }
+
+        function getCanvasData() {
+            let elements = document.querySelectorAll('.dropped-symbol'); let data = [];
+            elements.forEach(el => {
+                data.push({
+                    type: el.dataset.type, left: el.style.left, top: el.style.top, rotation: el.dataset.rotation,
+                    closed: el.dataset.closed, tripped: el.dataset.tripped || "false", active: el.dataset.active || "false", id: el.dataset.id || "1"
+                });
+            });
+            return data;
+        }
+
+        function spawnSymbol(type) {
+            saveState(); clearSelection(); const newElem = document.createElement('div');
+            newElem.classList.add('dropped-symbol'); newElem.dataset.type = type; newElem.dataset.rotation = "0";
+            
+            if(groupWithIds.includes(type)) { newElem.dataset.id = "1"; newElem.classList.add('has-id'); }
+            
+            let defaultClosed = (type === 'push-nc' || type === 'cb' || type === 'fuse' || type.includes('wire') || type === 't-joint' || type === 'corner' || type === 'wire-cross' || type.includes('source') || type === 'light' || type.includes('coil') || type === 'motor-3p' || type === 'km-contact-nc' || type === 'timer-nc' || type === 'olr-nc' || type === 'tc-module' || type === 'tc-nc' || type === 'pt100' || type === 'buzzer');
+            newElem.dataset.closed = defaultClosed ? "true" : "false"; 
+
+            if(type === 'olr-coil') newElem.dataset.tripped = "false";
+            if(type === 'tc-module') newElem.dataset.active = "false";
+
+            const graphicContainer = document.createElement('div'); graphicContainer.classList.add('symbol-graphic-container');
+            graphicContainer.innerHTML = svgTemplates[type]; newElem.appendChild(graphicContainer);
+
+            let startX = Math.round((-canvasX + 80) / GRID_SIZE) * GRID_SIZE; let startY = Math.round((-canvasY + 80) / GRID_SIZE) * GRID_SIZE;
+            startX = Math.max(0, startX); startY = Math.max(0, startY); newElem.style.left = startX + 'px'; newElem.style.top = startY + 'px';
+
+            const delBtn = document.createElement('div'); delBtn.classList.add('delete-btn'); newElem.appendChild(delBtn);
+            const rotBtn = document.createElement('div'); rotBtn.classList.add('rotate-btn'); newElem.appendChild(rotBtn);
+
+            if(groupWithIds.includes(type)) {
+                const idBtn = document.createElement('div'); idBtn.classList.add('id-btn'); idBtn.innerText = '#'; newElem.appendChild(idBtn);
+            }
+
+            const labelDiv = document.createElement('div'); labelDiv.classList.add('symbol-label');
+            labelDiv.innerHTML = `${symbolLabels[type]} <span class="status-text"></span>`; newElem.appendChild(labelDiv);
+
+            canvas.appendChild(newElem); attachElementEvents(newElem); updateElementLabelsAndTexts(newElem); calculateLiveCircuit();
+        }
+
+        let activeLoads = new Set();
+
+        // High Optimization Solver Circuit Calculations Engine
+        function calculateLiveCircuit() {
+            const elements = Array.from(document.querySelectorAll('.dropped-symbol'));
+            const alertBox = document.getElementById('short-circuit-alert');
+            
+            document.querySelectorAll('.flow-line, .flow-line-h, .flow-line-v').forEach(el => el.classList.remove('live-wire', 'neutral-wire'));
+            document.querySelectorAll('.load-box, .load-circle').forEach(el => el.classList.remove('load-active', 'coil-active', 'timer-active', 'olr-active', 'tc-active'));
+            document.querySelectorAll('.motor-rotor-group').forEach(m => m.classList.remove('motor-spinning'));
+            document.querySelectorAll('.light-bulb').forEach(l => l.classList.remove('light-on'));
+
+            if(elements.length === 0) {
+                logDisplay.innerHTML = "সিস্টেম রেডি: ফেজ (L) এবং নিউট্রাল (N) সংযোগ সম্পন্ন করুন।"; logDisplay.style.color = "#ecf0f1";
+                alertBox.style.display = "none"; return;
+                let starActive = false;
+    let deltaActive = false;
+
+    // ক্যানভাসের সব এলিমেন্ট চেক করা হচ্ছে
+    document.querySelectorAll('.dropped-symbol').forEach(el => {
+        if (el.dataset.type === 'km-coil') {
+            // এলিমেন্টের ভেতরের টেক্সট বা আইডি চেক করে স্টার/ডেল্টা চেনা
+            let labelText = el.innerText || "";
+            if (labelText.includes('STAR') && el.classList.contains('active')) {
+                starActive = true;
+            }
+            if (labelText.includes('DELTA') && el.classList.contains('active')) {
+                deltaActive = true;
+            }
+        }
+    });
+
+    // ইন্টারলকিং ব্রেক হলে (দুটি একসাথে অন হলে) শর্ট সার্কিট ট্রিগার হবে
+    if (starActive && deltaActive) {
+        const alertBox = document.getElementById('short-circuit-alert');
+        if (alertBox) {
+            alertBox.style.display = 'block';
+            alertBox.innerHTML = '💥 <strong>মারাত্মক শর্ট সার্কিট!</strong> স্টার (STAR) এবং ডেল্টা (DELTA) কন্ট্যাক্টর একসাথে সচল করা অসম্ভব! ইন্টারলকিং চেক করুন।';
+        }
+    }
+            }
+
+            let energizedKmIds = new Set(); let trippedOlrIds = new Set(); let activeTcIds = new Set();
+
+            elements.forEach(el => {
+                let id = el.dataset.id || "1";
+                if(el.dataset.type === 'km-coil' && activeLoads.has(el)) energizedKmIds.add(id);
+                if(el.dataset.type === 'olr-coil' && el.dataset.tripped === "true") trippedOlrIds.add(id);
+                if(el.dataset.type === 'tc-module' && el.dataset.active === "true") activeTcIds.add(id);
+            });
+
+            elements.forEach(el => {
+                if(el.dataset.type === 'timer-coil') {
+                    if(activeLoads.has(el)) {
+                        if(el.timerValue === undefined) el.timerValue = 4.0;
+                        if(el.timerValue > 0) { el.timerValue -= 0.3; if(el.timerValue < 0) el.timerValue = 0; }
+                    } else { el.timerValue = 4.0; }
+                }
+            });
+
+            let finishedTimerIds = new Set();
+            elements.forEach(el => {
+                let id = el.dataset.id || "1";
+                if(el.dataset.type === 'timer-coil' && el.timerValue <= 0) finishedTimerIds.add(id);
+            });
+
+            elements.forEach(el => {
+                const type = el.dataset.type; const id = el.dataset.id || "1"; const gc = el.querySelector('.symbol-graphic-container'); const pole = gc ? gc.querySelector('.switch-pole') : null;
+
+                if (type === 'km-contact') {
+                    let isClosed = energizedKmIds.has(id); el.dataset.closed = isClosed ? "true" : "false";
+                    if(pole) { pole.setAttribute('y1', isClosed ? '20' : '18'); pole.setAttribute('y2', isClosed ? '26' : '18'); pole.setAttribute('stroke', isClosed ? '#2ecc71' : '#e74c3c'); }
+                }
+                if (type === 'km-contact-nc') {
+                    let isClosed = !energizedKmIds.has(id); el.dataset.closed = isClosed ? "true" : "false";
+                    if(pole) { pole.setAttribute('y1', isClosed ? '14' : '10'); pole.setAttribute('y2', isClosed ? '14' : '10'); pole.setAttribute('stroke', isClosed ? '#2ecc71' : '#e74c3c'); }
+                }
+                if (type === 'olr-nc') {
+                    let isTripped = trippedOlrIds.has(id); el.dataset.closed = isTripped ? "false" : "true";
+                    if(pole) { pole.setAttribute('y1', isTripped ? '14' : '10'); pole.setAttribute('y2', isTripped ? '14' : '10'); pole.setAttribute('stroke', isTripped ? '#2ecc71' : '#e74c3c'); }
+                }
+                if (type === 'olr-no') {
+                    let isTripped = trippedOlrIds.has(id); el.dataset.closed = isTripped ? "true" : "false";
+                    if(pole) { pole.setAttribute('y1', isTripped ? '20' : '18'); pole.setAttribute('y2', isTripped ? '26' : '18'); pole.setAttribute('stroke', isTripped ? '#2ecc71' : '#e74c3c'); }
+                }
+                if (type === 'tc-no') {
+                    let isActive = activeTcIds.has(id); el.dataset.closed = isActive ? "true" : "false";
+                    if(pole) { pole.setAttribute('y1', isActive ? '20' : '18'); pole.setAttribute('y2', isActive ? '26' : '18'); pole.setAttribute('stroke', isActive ? '#2ecc71' : '#e74c3c'); }
+                }
+                if (type === 'tc-nc') {
+                    let isActive = activeTcIds.has(id); el.dataset.closed = isActive ? "false" : "true";
+                    if(pole) { pole.setAttribute('y1', isActive ? '14' : '10'); pole.setAttribute('y2', isActive ? '14' : '10'); pole.setAttribute('stroke', isActive ? '#2ecc71' : '#e74c3c'); }
+                }
+                if (type === 'timer-no') {
+                    let isClosed = finishedTimerIds.has(id); el.dataset.closed = isClosed ? "true" : "false";
+                    if(pole) { pole.setAttribute('y1', isClosed ? '20' : '18'); pole.setAttribute('y2', isClosed ? '26' : '18'); pole.setAttribute('stroke', isClosed ? '#2ecc71' : '#e74c3c'); }
+                }
+                if (type === 'timer-nc') {
+                    let isClosed = !finishedTimerIds.has(id); el.dataset.closed = isClosed ? "true" : "false";
+                    if(pole) { pole.setAttribute('y1', isClosed ? '14' : '10'); pole.setAttribute('y2', isClosed ? '14' : '10'); pole.setAttribute('stroke', isClosed ? '#2ecc71' : '#e74c3c'); }
+                }
+            });
+
+            let phaseSources = elements.filter(el => el.dataset.type === 'source-p' || el.dataset.type === 'source-3p');
+            let neutralSources = elements.filter(el => el.dataset.type === 'source-n');
+
+            function runBFS(startNodes) {
+                let queue = startNodes.map(node => ({ el: node, flow: 'both' }));
+                let visitedH = new Set(); let visitedV = new Set(); let visitedBoth = new Set();
+                let reachedLoads = new Set(); let reachedWires = new Set();
+
+                while(queue.length > 0) {
+                    let currentObj = queue.shift(); let current = currentObj.el; let currentFlow = currentObj.flow;
+
+                    if (currentFlow === 'both') {
+                        if (visitedBoth.has(current)) continue;
+                        visitedBoth.add(current); visitedH.add(current); visitedV.add(current);
+                    } else if (currentFlow === 'H') {
+                        if (visitedH.has(current)) continue; visitedH.add(current);
+                    } else if (currentFlow === 'V') {
+                        if (visitedV.has(current)) continue; visitedV.add(current);
+                    }
+
+                    if(current.dataset.closed === "false") continue;
+
+                    let type = current.dataset.type;
+                    let isLoad = type.includes('coil') || type === 'light' || type === 'motor-3p' || type === 'tc-module' || type === 'pt100' || type === 'buzzer';
+
+                    if (isLoad) { reachedLoads.add(current); continue; } else { reachedWires.add(current); }
+
+                    let cX = parseInt(current.style.left); let cY = parseInt(current.style.top);
+                    elements.forEach(partner => {
+                        if (partner === current) return;
+                        let pX = parseInt(partner.style.left); let pY = parseInt(partner.style.top);
+                        
+                        let isLeft = (pX === cX - GRID_SIZE && pY === cY); let isRight = (pX === cX + GRID_SIZE && pY === cY);
+                        let isTop = (pX === cX && pY === cY - GRID_SIZE); let isBottom = (pX === cX && pY === cY + GRID_SIZE);
+
+                        if (isLeft || isRight || isTop || isBottom) {
+                            let stepDir = (isLeft || isRight) ? 'H' : 'V';
+                            if (type === 'wire-cross') {
+                                if (currentFlow === 'H' && stepDir !== 'H') return;
+                                if (currentFlow === 'V' && stepDir !== 'V') return;
+                            }
+
+                            let nextFlow = 'both';
+                            if (partner.dataset.type === 'wire-cross') nextFlow = stepDir;
+
+                            if (nextFlow === 'both' && visitedBoth.has(partner)) return;
+                            if (nextFlow === 'H' && visitedH.has(partner)) return;
+                            if (nextFlow === 'V' && visitedV.has(partner)) return;
+
+                            queue.push({ el: partner, flow: nextFlow });
+                        }
+                    });
+                }
+                return { wires: reachedWires, loads: reachedLoads, visitedH, visitedV };
+            }
+
+            let phaseResult = runBFS(phaseSources); let neutralResult = runBFS(neutralSources);
+
+            // Active Intersection Short Circuit Calculation Logic
+            let isShortCircuit = false;
+            phaseResult.wires.forEach(w => {
+                if(neutralResult.wires.has(w)) isShortCircuit = true;
+            });
+
+            if(isShortCircuit) {
+                alertBox.style.display = "block"; logDisplay.innerHTML = "⚠️ বিপদ সংকেত: সার্কিটে সরাসরি শর্ট সার্কিট হয়েছে!";
+                logDisplay.style.color = "#c0392b"; return;
+            } else {
+                alertBox.style.display = "none";
+            }
+
+            phaseResult.wires.forEach(el => {
+                if(el.dataset.type === 'wire-cross') {
+                    if(phaseResult.visitedH.has(el)) el.querySelectorAll('.flow-line-h').forEach(l => l.classList.add('live-wire'));
+                    if(phaseResult.visitedV.has(el)) el.querySelectorAll('.flow-line-v').forEach(l => l.classList.add('live-wire'));
+                } else {
+                    el.querySelectorAll('.flow-line, .flow-line-h, .flow-line-v').forEach(l => l.classList.add('live-wire'));
+                }
+            });
+            
+            neutralResult.wires.forEach(el => {
+                if(el.dataset.type === 'wire-cross') {
+                    if(neutralResult.visitedH.has(el)) el.querySelectorAll('.flow-line-h').forEach(l => { if(!l.classList.contains('live-wire')) l.classList.add('neutral-wire'); });
+                    if(neutralResult.visitedV.has(el)) el.querySelectorAll('.flow-line-v').forEach(l => { if(!l.classList.contains('live-wire')) l.classList.add('neutral-wire'); });
+                } else {
+                    el.querySelectorAll('.flow-line, .flow-line-h, .flow-line-v').forEach(l => { if(!l.classList.contains('live-wire')) l.classList.add('neutral-wire'); });
+                }
+            });
+
+            activeLoads.clear(); let activeCount = 0;
+            phaseResult.loads.forEach(load => {
+                let type = load.dataset.type;
+                if (type === 'motor-3p' || type === 'olr-coil' || type === 'pt100' || type === 'tc-module') {
+                    activeLoads.add(load); 
+                } else if (neutralResult.loads.has(load)) { activeLoads.add(load); }
+            });
+
+            activeLoads.forEach(el => {
+                activeCount++;
+                if(el.dataset.type === 'motor-3p') el.querySelector('.motor-rotor-group').classList.add('motor-spinning');
+                el.querySelectorAll('.load-circle').forEach(c => c.classList.add('load-active'));
+                el.querySelectorAll('.load-box').forEach(b => {
+                    if(el.dataset.type === 'timer-coil') b.classList.add('timer-active');
+                    else if(el.dataset.type === 'tc-module') b.classList.add('tc-active');
+                    else b.classList.add('coil-active');
+                });
+                if(el.dataset.type === 'light') el.querySelector('.light-bulb').classList.add('light-on');
+                if(el.dataset.type === 'buzzer') el.querySelector('.load-box').classList.add('coil-active');
+            });
+
+            elements.forEach(el => {
+                const type = el.dataset.type; const statusSpan = el.querySelector('.status-text'); if (!statusSpan) return;
+
+                if (type === 'timer-coil') {
+                    if(activeLoads.has(el)) statusSpan.innerHTML = ` <span class="status-on">(${el.timerValue.toFixed(1)}s)</span>`;
+                    else statusSpan.innerHTML = ' <span class="status-off">(অফ)</span>'; return;
+                }
+                if(type === 'olr-coil') {
+                    if (el.dataset.tripped === "true") statusSpan.innerHTML = ' <span class="status-off">[!] ট্রিপড</span>';
+                    else statusSpan.innerHTML = ' <span class="status-on">(স্বাভাবিক)</span>'; return;
+                }
+                if(type === 'tc-module') {
+                    if (el.dataset.active === "true") statusSpan.innerHTML = ' <span class="status-off">[Hit!]</span>';
+                    else statusSpan.innerHTML = ' <span class="status-on">(নরমাল)</span>'; return;
+                }
+
+                let isSwitch = ['push-no', 'push-nc', 'cb', 'fuse', 'km-contact', 'km-contact-nc', 'timer-no', 'timer-nc', 'olr-nc', 'olr-no', 'tc-no', 'tc-nc', 'sensor', 'limit-switch'].includes(type);
+                let isLoad = ['light', 'motor-3p', 'km-coil', 'buzzer'].includes(type);
+
+                if (isSwitch) {
+                    if (el.dataset.closed === "true") statusSpan.innerHTML = ' <span class="status-on">(ক্লোজড)</span>';
+                    else statusSpan.innerHTML = ' <span class="status-off">(ওপেন)</span>';
+                } else if (isLoad) {
+                    if (activeLoads.has(el)) statusSpan.innerHTML = ' <span class="status-on">(সচল)</span>';
+                    else statusSpan.innerHTML = ' <span class="status-off">(বন্ধ)</span>';
+                }
+            });
+
+            if(trippedOlrIds.size > 0) {
+                logDisplay.innerHTML = `সিস্টেম সতর্কবার্তা: থার্মাল ওভারলোড রিলে (ID: ${Array.from(trippedOlrIds).join(', ')}) ট্রিপড হয়েছে!`; logDisplay.style.color = "#c0392b";
+            } else if (activeCount > 0) {
+                logDisplay.innerHTML = `সার্কিট সচল! ল্যাচিং ও টাইমিং লুপ একটিভ আছে।`; logDisplay.style.color = "#2ecc71";
+            } else {
+                logDisplay.innerHTML = "সিস্টেম রেডি: সেন্সর/টেম্পারেচার এবং OLR সিকোয়েন্স টেস্ট করতে পারেন।"; logDisplay.style.color = "#ecf0f1";
+            }
+        }
+// কপি করা সিম্বল ক্যানভাসে পেস্ট করার মূল ফাংশন
+function pasteCopiedSymbol() {
+    if (isLocked) return;
+    if (!copiedSymbolData) {
+        alert("প্রথমে যেকোনো একটি সিম্বল সিলেক্ট করে কপি (📋) বাটনে চাপুন!");
+        return;
+    }
+
+    if (typeof saveState === 'function') saveState(); // আনডু ব্যাকআপ
+
+    if (typeof spawnSymbol === 'function') {
+        spawnSymbol(copiedSymbolData.type);
+
+        const elements = canvas.querySelectorAll('.dropped-symbol');
+        const newElem = elements[elements.length - 1];
+
+        if (newElem) {
+            newElem.dataset.rotation = copiedSymbolData.rotation;
+            newElem.dataset.id = copiedSymbolData.id;
+
+            const graphicContainer = newElem.querySelector('.symbol-graphic-container');
+            if (graphicContainer) {
+                graphicContainer.style.transform = `rotate(${copiedSymbolData.rotation}deg)`;
+            }
+
+            if (typeof updateElementLabelsAndTexts === 'function') {
+                updateElementLabelsAndTexts(newElem);
+            }
+
+            // নতুন উপাদানটি যেন আগেরটির ঠিক উপরে না পড়ে, তাই একটু সরিয়ে দেওয়া
+            let currentLeft = parseInt(newElem.style.left) || 100;
+            let currentTop = parseInt(newElem.style.top) || 100;
+            newElem.style.left = (currentLeft + 40) + 'px';
+            newElem.style.top = (currentTop + 40) + 'px';
+
+            if (typeof clearSelection === 'function') clearSelection();
+            newElem.classList.add('selected');
+            activeSelectedElement = newElem;
+
+            if (typeof calculateLiveCircuit === 'function') calculateLiveCircuit();
+            document.getElementById('diagnostic-log').innerText = "📋 সিম্বল সফলভাবে পেস্ট করা হয়েছে!";
+        }
+    }
+}
+// --- বুলেটে জোড়া লাগানো এবং সার্কিট কমপ্লিট করার মূল জাভাস্ক্রিপ্ট ---
+let firstSelectedDot = null;
+let firstDotParent = null;
+
+function handleTerminalDotClick(dot, parent) {
+    if (isLocked) return;
+
+    // ১ম বুলেট সিলেক্ট না থাকলে সিলেক্ট করা
+    if (!firstSelectedDot) {
+        firstSelectedDot = dot;
+        firstDotParent = parent;
+        dot.classList.add('selected-dot');
+        document.getElementById('diagnostic-log').innerText = "📍 ১ম বুলেট সিলেক্ট হয়েছে। এবার ২য় উপাদানের বুলেটে চাপুন।";
+    } else {
+        // একই বুলেটে আবার চাপ দিলে সিলেকশন বাতিল
+        if (firstSelectedDot === dot) {
+            clearTerminalDotSelection();
+            return;
+        }
+
+        let secondSelectedDot = dot;
+        let secondDotParent = parent;
+
+        // একই সিম্বলের দুই মাথায় কানেকশন হবে না
+        if (firstDotParent === secondDotParent) {
+            alert("একই সিম্বলের দুটি বুলেটে কানেক্ট করা যাবে না!");
+            clearTerminalDotSelection();
+            return;
+        }
+
+        if (typeof saveState === 'function') saveState(); // আনডু করার জন্য ব্যাকআপ
+
+        // পজিশন রিড করা
+        let x1 = parseInt(firstDotParent.style.left) || 0;
+        let y1 = parseInt(firstDotParent.style.top) || 0;
+        
+        let pos1 = firstSelectedDot.dataset.pos;
+        let pos2 = secondSelectedDot.dataset.pos;
+
+        // ২য় সিম্বলটিকে ১ম সিম্বলের সাথে নিখুঁতভাবে স্ন্যাপ/জোড়া লাগানো (90px গ্রিড মেচিং)
+        if (pos1 === 'right' && pos2 === 'left') {
+            secondDotParent.style.left = (x1 + 90) + 'px';
+            secondDotParent.style.top = y1 + 'px';
+        } else if (pos1 === 'left' && pos2 === 'right') {
+            secondDotParent.style.left = (x1 - 90) + 'px';
+            secondDotParent.style.top = y1 + 'px';
+        } else if (pos1 === 'bottom' && pos2 === 'top') {
+            secondDotParent.style.left = x1 + 'px';
+            secondDotParent.style.top = (y1 + 90) + 'px';
+        } else if (pos1 === 'top' && pos2 === 'bottom') {
+            secondDotParent.style.left = x1 + 'px';
+            secondDotParent.style.top = (y1 - 90) + 'px';
+        } else {
+            // ভিন্নমুখী বুলেটের ক্ষেত্রে অটো জেনেরিক স্ন্যাপিং (যেমন: তার থেকে কর্নার জয়েন্ট)
+            if (pos1 === 'right') { secondDotParent.style.left = (x1 + 90) + 'px'; secondDotParent.style.top = y1 + 'px'; }
+            else if (pos1 === 'left') { secondDotParent.style.left = (x1 - 90) + 'px'; secondDotParent.style.top = y1 + 'px'; }
+            else if (pos1 === 'bottom') { secondDotParent.style.left = x1 + 'px'; secondDotParent.style.top = (y1 + 90) + 'px'; }
+            else if (pos1 === 'top') { secondDotParent.style.left = x1 + 'px'; secondDotParent.style.top = (y1 - 90) + 'px'; }
+        }
+
+        // সার্কিটের লাইভ ক্যালকুলেশন রান করা (যাতে কানেক্ট হওয়ামাত্রই বিদ্যুৎ প্রবাহিত হয়)
+        if (typeof calculateLiveCircuit === 'function') {
+            calculateLiveCircuit();
+        }
+
+        document.getElementById('diagnostic-log').innerText = "⚡ কানেকশন সফল! সার্কিট উপাদানগুলো নিখুঁতভাবে যুক্ত হয়েছে।";
+        clearTerminalDotSelection();
+    }
+}
+
+function clearTerminalDotSelection() {
+    if (firstSelectedDot) {
+        firstSelectedDot.classList.remove('selected-dot');
+    }
+    firstSelectedDot = null;
+    firstDotParent = null;
+}
+
+// স্ক্রিনের ফাঁকা জায়গায় টাচ করলে বুলেট সিলেকশন চলে যাবে
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.terminal-dot')) {
+        clearTerminalDotSelection();
+    }
+});
+
+        function clearCanvas() { 
+            if(confirm("আপনি কি নিশ্চিত যে সম্পূর্ণ ক্যানভাস মুছে ফেলতে চান?")) { 
+                saveState(); canvas.innerHTML = ''; calculateLiveCircuit(); clearSelection(); 
+                document.getElementById('diagramTitle').value=''; document.getElementById('studentName').value=''; updateLiveLabels(); 
+            } 
+        }
+
+        // --- IMAGE & DOCUMENT EXPORT SYSTEM LOGIC ---
+        function exportImage(format = 'png') {
+            const elements = document.querySelectorAll('.dropped-symbol'); if (elements.length === 0) { alert("ক্যানভাসে কোনো সার্কিট তৈরি করা হয়নি!"); return; }
+            document.querySelectorAll('.dropped-symbol').forEach(el => el.classList.remove('selected'));
+            
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            elements.forEach(el => {
+                let x = parseInt(el.style.left) || 0; let y = parseInt(el.style.top) || 0;
+                if (x < minX) minX = x; if (y < minY) minY = y;
+                if (x + GRID_SIZE > maxX) maxX = x + GRID_SIZE; if (y + (GRID_SIZE + 30) > maxY) maxY = y + (GRID_SIZE + 30); 
+            });
+
+            minX -= 40; maxX += 40; minY -= 40; maxY += 40; let width = maxX - minX, height = maxY - minY;
+            let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${minX} ${minY} ${width} ${height}">`;
+            let isDark = canvas.classList.contains('dark-theme');
+            svgContent += `<rect x="${minX}" y="${minY}" width="${width}" height="${height}" fill="${isDark ? '#1e272e' : '#ffffff'}"/>`;
+            
+            let gridColor = isDark ? '#2c3e50' : '#eef1f6';
+            svgContent += `<defs><pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse"><path d="M 60 0 L 0 0 0 60" fill="none" stroke="${gridColor}" stroke-width="1"/></pattern></defs><rect x="${minX}" y="${minY}" width="${width}" height="${height}" fill="url(#grid)"/>`;
+
+            const titleText = document.getElementById('diagramTitle').value.trim(); const studentText = document.getElementById('studentName').value.trim();
+            if (titleText || studentText) {
+                svgContent += `<g transform="translate(${minX + 40}, ${minY + 40})">`;
+                if (titleText) svgContent += `<text x="0" y="15" font-family="sans-serif" font-size="20" font-weight="bold" fill="${isDark ? "#ecf0f1" : "#1e272e"}">${titleText}</text>`;
+                if (studentText) svgContent += `<text x="0" y="45" font-family="sans-serif" font-size="13" font-weight="bold" fill="#7f8c8d">তৈরি করেছেন: ${studentText}</text>`;
+                svgContent += `</g>`;
+            }
+
+            elements.forEach(el => {
+                let x = parseInt(el.style.left) || 0; let y = parseInt(el.style.top) || 0; let rot = el.dataset.rotation || "0";
+                let innerSvg = el.querySelector('.symbol-graphic-container svg');
+                if (innerSvg) {
+                    let svgInnerHTML = innerSvg.innerHTML;
+                    if(isDark) svgInnerHTML = svgInnerHTML.replace(/stroke="#2c3e50"/g, 'stroke="#ecf0f1"').replace(/fill="#2c3e50"/g, 'fill="#ecf0f1"'); 
+                    svgContent += `<g transform="translate(${x}, ${y}) rotate(${rot}, 30, 30)"><svg viewBox="0 0 40 40" width="60" height="60">${svgInnerHTML}</svg></g>`;
+                }
+                if (!['wire-h', 'wire-v', 'corner', 't-joint', 'wire-cross'].includes(el.dataset.type)) {
+                    let type = el.dataset.type; let baseName = symbolLabels[type] || ""; let id = el.dataset.id || "1";
+                    let nameText = baseName.replace('KM', 'KM' + id).replace('KT', 'KT' + id).replace('OLR', 'OLR' + id).replace('TC', 'TC' + id).replace('কন্ট্যাক্টর', 'কন্ট্যাক্টর ' + id).replace('টাইমার', 'টাইমার ' + id);
+                    svgContent += `<text x="${x + 45}" y="${y + 82}" font-family="sans-serif" font-size="11" font-weight="bold" fill="${isDark ? "#ecf0f1" : "#2c3e50"}" text-anchor="middle">${nameText}</text>`;
+                }
+            });
+            svgContent += `</svg>`;
+
+            const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' }); const url = URL.createObjectURL(blob); const img = new Image();
+            img.onload = () => {
+                const canvasExport = document.createElement('canvas'); canvasExport.width = width * 2; canvasExport.height = height * 2;
+                const ctx = canvasExport.getContext('2d'); ctx.scale(2, 2); ctx.drawImage(img, 0, 0, width, height);
+
+                const link = document.createElement('a'); link.download = (titleText ? titleText : 'circuit_diagram') + `.${format}`;
+                link.href = canvasExport.toDataURL(`image/${format}`); link.click(); URL.revokeObjectURL(url);
+            };
+            img.src = url;
+        }
+
+        function downloadPDF() {
+            const elements = document.querySelectorAll('.dropped-symbol'); if (elements.length === 0) { alert("ক্যানভাসে কোনো সার্কিট তৈরি করা হয়নি!"); return; }
+            if(!window.jspdf) { alert("পিডিএফ লাইব্রেরি লোড হচ্ছে, দয়া করে একটু অপেক্ষা করুন।"); return; }
+            
+            clearSelection(); const titleText = document.getElementById('diagramTitle').value.trim(); const studentText = document.getElementById('studentName').value.trim();
+
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            elements.forEach(el => {
+                let x = parseInt(el.style.left) || 0; let y = parseInt(el.style.top) || 0;
+                if (x < minX) minX = x; if (y < minY) minY = y;
+                if (x + GRID_SIZE > maxX) maxX = x + GRID_SIZE; if (y + (GRID_SIZE + 30) > maxY) maxY = y + (GRID_SIZE + 30); 
+            });
+
+            minX -= 40; maxX += 40; maxY += 40; let headerHeight = (titleText || studentText) ? 80 : 0; minY -= (40 + headerHeight);
+            let width = maxX - minX; let height = maxY - minY;
+
+            const svgStyles = `text { font-family: 'Segoe UI', Tahoma, Helvetica, sans-serif; }`;
+            let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${minX} ${minY} ${width} ${height}" style="background-color: #ffffff;"><style>${svgStyles}</style>`;
+            svgContent += `<rect x="${minX}" y="${minY}" width="${width}" height="${height}" fill="#ffffff"/>`;
+
+            if (titleText || studentText) {
+                svgContent += `<g transform="translate(${minX + 40}, ${minY + 40})">`;
+                if (titleText) svgContent += `<text x="0" y="15" font-size="20" font-weight="bold" fill="#1e272e">${titleText}</text>`;
+                if (studentText) svgContent += `<text x="0" y="45" font-size="13" font-weight="bold" fill="#7f8c8d">তৈরি করেছেন: ${studentText}</text>`;
+                svgContent += `<line x1="0" y1="60" x2="${width - 80}" y2="60" stroke="#cbd5e1" stroke-width="2"/>`;
+                svgContent += `</g>`;
+            }
+            svgContent += `<text x="${maxX - 245}" y="${minY + 35}" font-size="11" font-weight="bold" fill="#16a085">Developer: subas kumar mahato</text>`;
+
+            elements.forEach(el => {
+                let x = parseInt(el.style.left) || 0; let y = parseInt(el.style.top) || 0; let rot = el.dataset.rotation || "0";
+                let innerSvg = el.querySelector('.symbol-graphic-container svg');
+                if (innerSvg) svgContent += `<g transform="translate(${x}, ${y}) rotate(${rot}, 30, 30)"><svg viewBox="0 0 40 40" width="60" height="60">${innerSvg.innerHTML}</svg></g>`;
+                
+                if (!['wire-h', 'wire-v', 'corner', 't-joint', 'wire-cross'].includes(el.dataset.type)) {
+                    let type = el.dataset.type; let baseName = symbolLabels[type] || ""; let id = el.dataset.id || "1";
+                    let nameText = baseName.replace('KM', 'KM' + id).replace('KT', 'KT' + id).replace('OLR', 'OLR' + id).replace('TC', 'TC' + id).replace('কন্ট্যাক্টর', 'কন্ট্যাক্টর ' + id).replace('টাইমার', 'টাইমার ' + id);
+                    svgContent += `<text x="${x + 45}" y="${y + 82}" font-size="11" font-weight="bold" fill="#2c3e50" text-anchor="middle">${nameText}</text>`;
+                }
+            });
+            svgContent += `</svg>`;
+
+            const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' }); const url = URL.createObjectURL(blob); const img = new Image();
+            img.onload = () => {
+                const canvasExport = document.createElement('canvas'); canvasExport.width = width * 2; canvasExport.height = height * 2;
+                const ctx = canvasExport.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvasExport.width, canvasExport.height); ctx.drawImage(img, 0, 0, canvasExport.width, canvasExport.height);
+
+                const { jsPDF } = window.jspdf; let orientation = width > height ? 'l' : 'p';
+                const doc = new jsPDF(orientation, 'px', [width, height]);
+                doc.addImage(canvasExport.toDataURL('image/jpeg', 1.0), 'JPEG', 0, 0, width, height);
+                doc.save(titleText ? `${titleText}.pdf` : 'circuit-diagram.pdf'); URL.revokeObjectURL(url);
+            };
+            img.src = url;
+        }
+
+        // --- STABILIZED CLOUD FIREBASE SERVICES ---
+        function saveDiagramToFirebase() {
+            const elementsData = getCanvasData(); if (elementsData.length === 0) { alert("ক্যানভাস খালি! সেভ করার মতো কিছু নেই।"); return; }
+            let titleInput = document.getElementById('diagramTitle').value.trim();
+            let diagramName = titleInput ? titleInput : `ডায়াগ্রাম - ${new Date().getTime()}`;
+            let studentName = document.getElementById('studentName').value.trim();
+
+            let newRecord = {
+                name: diagramName, student: studentName, date: new Date().toLocaleString(),
+                canvasX: canvasX, canvasY: canvasY, zoom: zoomScale, gridSize: GRID_SIZE, elements: elementsData
+            };
+
+            database.ref('diagrams').push().set(newRecord)
+                .then(() => { alert("ডায়াগ্রামটি সফলভাবে ক্লাউডে (Firebase) সেভ হয়েছে!"); renderSavedList(); })
+                .catch((error) => { alert("ডেটা সেভ করতে সমস্যা হয়েছে। Firebase সেটিংস চেক করুন।"); });
+        }
+
+        function toggleSavedList() {
+            const panel = document.getElementById('saved-diagrams-panel');
+            if (panel.style.display === 'flex') { panel.style.display = 'none'; } else { renderSavedList(); panel.style.display = 'flex'; }
+        }
+
+        function renderSavedList() {
+            const container = document.getElementById('saved-list-container'); container.innerHTML = 'লোড হচ্ছে...';
+            database.ref('diagrams').once('value')
+                .then((snapshot) => {
+                    container.innerHTML = ''; const data = snapshot.val();
+                    if (!data) { container.innerHTML = '<div style="text-align:center; color:#bdc3c7; padding: 20px;">ক্লাউডে কোনো ডায়াগ্রাম সেভ করা নেই।</div>'; return; }
+
+                    const diagrams = Object.keys(data).map(key => ({ id: key, ...data[key] })).reverse();
+                    diagrams.forEach(diagram => {
+                        const item = document.createElement('div'); item.classList.add('saved-item');
+                        item.innerHTML = `
+                            <div class="saved-item-info"><span>#</span> ${diagram.name}<br><small style="color:#7f8c8d">${diagram.date}</small></div>
+                            <div class="action-btns">
+                                <button class="btn-load" onclick="loadDiagram('${diagram.id}')">লোড</button>
+                                <button class="btn-delete" onclick="deleteDiagram('${diagram.id}')">ডিলিট</button>
+                            </div>`;
+                        container.appendChild(item);
+                    });
+                })
+                .catch(() => { container.innerHTML = '<div style="text-align:center; color:#e74c3c; padding: 20px;">ডেটা লোড ব্যর্থ। Firebase সেটিংস চেক করুন।</div>'; });
+        }
+
+        function deleteDiagram(id) {
+            if(confirm("আপনি কি নিশ্চিত যে এই ফাইলটি মুছে ফেলতে চান?")) {
+                database.ref('diagrams/' + id).remove().then(() => renderSavedList());
+            }
+        }
+
+        function loadDiagram(id) {
+            database.ref('diagrams/' + id).once('value')
+                .then((snapshot) => {
+                    const diagramToLoad = snapshot.val(); if (!diagramToLoad) return;
+                    canvas.innerHTML = ''; clearSelection();
+                    
+                    document.getElementById('diagramTitle').value = diagramToLoad.name.includes('ডায়াগ্রাম -') ? '' : diagramToLoad.name;
+                    document.getElementById('studentName').value = diagramToLoad.student || ''; updateLiveLabels();
+
+                    canvasX = diagramToLoad.canvasX || 0; canvasY = diagramToLoad.canvasY || 0;
+                    zoomScale = diagramToLoad.zoom || 1.0; updateCanvasTransform();
+
+                    let oldGridSize = diagramToLoad.gridSize || 40; let scaleFactor = GRID_SIZE / oldGridSize; 
+
+                    if (Array.isArray(diagramToLoad.elements)) {
+                        diagramToLoad.elements.forEach(data => {
+                            let migratedData = { ...data };
+                            migratedData.left = (parseInt(migratedData.left) * scaleFactor) + 'px';
+                            migratedData.top = (parseInt(migratedData.top) * scaleFactor) + 'px';
+                            rebuildSymbolFromData(migratedData);
+                        });
+                    }
+
+                    calculateLiveCircuit(); toggleSavedList(); undoStack = []; redoStack = [];
+                })
+                .catch(() => { alert("ডায়াগ্রাম লোড করতে সমস্যা হয়েছে।"); });
+        }
+
+        function rebuildSymbolFromData(data) {
+            if (!data || !data.type) return;
+            const newElem = document.createElement('div'); newElem.classList.add('dropped-symbol');
+            newElem.dataset.type = data.type; newElem.dataset.rotation = data.rotation; newElem.dataset.closed = data.closed;
+            
+            if(data.id) { newElem.dataset.id = data.id; if(groupWithIds.includes(data.type)) newElem.classList.add('has-id'); }
+            if(data.type === 'olr-coil') newElem.dataset.tripped = data.tripped || "false";
+            if(data.type === 'tc-module') newElem.dataset.active = data.active || "false";
+
+            const graphicContainer = document.createElement('div'); graphicContainer.classList.add('symbol-graphic-container');
+            graphicContainer.innerHTML = svgTemplates[data.type] || ''; graphicContainer.style.transform = `rotate(${data.rotation}deg)`;
+            newElem.appendChild(graphicContainer);
+
+            newElem.style.left = data.left; newElem.style.top = data.top;
+
+            const delBtn = document.createElement('div'); delBtn.classList.add('delete-btn'); newElem.appendChild(delBtn);
+            const rotBtn = document.createElement('div'); rotBtn.classList.add('rotate-btn'); newElem.appendChild(rotBtn);
+
+            if(groupWithIds.includes(data.type)) {
+                const idBtn = document.createElement('div'); idBtn.classList.add('id-btn'); idBtn.innerText = '#'; newElem.appendChild(idBtn);
+            }
+
+            const labelDiv = document.createElement('div'); labelDiv.classList.add('symbol-label');
+            labelDiv.innerHTML = `${symbolLabels[data.type] || ''} <span class="status-text"></span>`; newElem.appendChild(labelDiv);
+
+            canvas.appendChild(newElem); attachElementEvents(newElem); updateElementLabelsAndTexts(newElem);
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.dropped-symbol').forEach(elem => {
+                attachElementEvents(elem);
+                let rot = elem.dataset.rotation || "0";
+                let gContainer = elem.querySelector('.symbol-graphic-container');
+                if(gContainer) gContainer.style.transform = `rotate(${rot}deg)`;
+                updateElementLabelsAndTexts(elem);
+            });
+            calculateLiveCircuit();
+        });
+
+        // 300ms ফ্রেম রেট ইন্টারভাল (পারফরম্যান্স ও রিসোর্স ফ্রেন্ডলি প্রসেসিং লুপ)
+        setInterval(calculateLiveCircuit, 300);
+        // --- জুম আউট ও স্ক্রিন সাইজ পরিবর্তন ফিক্স ---
+window.addEventListener('resize', () => {
+    if (typeof calculateLiveCircuit === 'function') {
+        setTimeout(() => {
+            calculateLiveCircuit();
+        }, 150);
+    }
+});
+
+document.addEventListener('wheel', (e) => {
+    if (e.ctrlKey) {
+        if (typeof calculateLiveCircuit === 'function') {
+            setTimeout(() => {
+                calculateLiveCircuit();
+            }, 150);
+        }
+    }
+}, { passive: true });
+// --- জুম আউট ফিক্স শেষ ---
+
+    </script>
+</body>
+</html>
+
