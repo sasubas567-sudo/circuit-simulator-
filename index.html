@@ -1792,18 +1792,35 @@ document.addEventListener('wheel', (e) => {
         }
     }
 }, { passive: true});
-// --- জুম আউট ফিক্স শেষ ---
-
-// স্ক্রিন রিসাইজ ও জুম ট্র্যাকিং ফিক্স
+// --- জুম আউট ও স্ক্রিন সাইজ পরিবর্তন ফিক্স ---
 window.addEventListener('resize', () => {
     if (typeof calculateLiveCircuit === 'function') {
-        setTimeout(() => { calculateLiveCircuit(); }, 150);
+        setTimeout(() => {
+            calculateLiveCircuit();
+        }, 150);
     }
 });
 
-document.addEventListener('gesturestart', function(e) {
-    e.preventDefault();
-});
+document.addEventListener('wheel', (e) => {
+    if (e.ctrlKey) {
+        if (typeof calculateLiveCircuit === 'function') {
+            setTimeout(() => {
+                calculateLiveCircuit();
+            }, 150);
+        }
+    }
+}, { passive: true });
+// --- জুম আউট ফিক্স শেষ ---
+
+// WebIntoApp এবং অ্যান্ড্রয়েড অ্যাপে টেনে রিফ্রেশ করা (Pull to Refresh) সম্পূর্ণ বন্ধ করার কোড
+document.addEventListener('touchmove', function(e) {
+    if (e.touches.length === 1) {
+        // মেনু বা বামের সাইডবার ছাড়া ক্যানভাসে বা সিম্বলে টান দিলে অ্যাপ রিফ্রেশ বা ব্যাকগ্রাউন্ড নড়াচড়া করবে না
+        if (!e.target.closest('#dropdown-options') && !e.target.closest('#palette')) {
+            e.preventDefault();
+        }
+    }
+}, { passive: false });
 </script>
 </body>
 </html>
