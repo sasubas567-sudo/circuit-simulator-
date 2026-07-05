@@ -1784,18 +1784,17 @@ document.addEventListener('wheel', (e) => {
             }, 150);
         }
     }
-}, { passive: false});
+}, { passive: true});
 // --- জুম আউট ফিক্স শেষ ---
             <script>
 document.addEventListener('touchmove', function(e) {
     if (e.touches.length === 1) {
         e.preventDefault();
     }
-}, { passive: false });
+}, { passive: false});
 
 document.body.style.overscrollBehavior = 'none';
 document.documentElement.style.overscrollBehavior = 'none';
-</script>
 
     </script>
 </body>
