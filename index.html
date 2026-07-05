@@ -1786,15 +1786,14 @@ document.addEventListener('wheel', (e) => {
     }
 }, { passive: true});
 // --- জুম আউট ফিক্স শেষ ---
-            <script>
+
+// মোবাইল স্ক্রিন টাচ ও জুম কন্ট্রোল ফিক্স
 document.addEventListener('touchmove', function(e) {
-    if (e.touches.length === 1) {
+    if (e.scale !== 1) {
         e.preventDefault();
     }
 }, { passive: false });
 
-document.body.style.overscrollBehavior = 'none';
-document.documentElement.style.overscrollBehavior = 'none';
 </script>
 </body>
 </html>
